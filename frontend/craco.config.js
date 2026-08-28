@@ -98,6 +98,11 @@ let webpackConfig = {
         ],
       };
 
+      // Remove ForkTsCheckerWebpackPlugin since this is a JS project and avoids schema validation bugs in Node 20+
+      webpackConfig.plugins = webpackConfig.plugins.filter(
+        (plugin) => plugin.constructor.name !== 'ForkTsCheckerWebpackPlugin'
+      );
+
       // Add health check plugin to webpack if enabled
       if (config.enableHealthCheck && healthPluginInstance) {
         webpackConfig.plugins.push(healthPluginInstance);
