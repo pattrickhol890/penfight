@@ -311,7 +311,7 @@ export default function PenFight() {
       return { x: (cx - r.left) * (CFG.W / r.width), y: (cy - r.top) * (CFG.H / r.height) };
     };
     const setZoom = (z) => {
-      canvas.style.transform = scale();
+      canvas.style.transform = `scale(${z})`;
     };
 
     const onDown = (e) => {
