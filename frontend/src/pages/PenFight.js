@@ -371,9 +371,10 @@ export default function PenFight() {
       const nx = rawMag > 0 ? logdx / rawMag : 0;
       const ny = rawMag > 0 ? logdy / rawMag : 0;
       st.aiming.current = { x: st.aiming.start.x + nx * cap, y: st.aiming.start.y + ny * cap };
-      setPower(cap / CFG.maxDrag);
-      const zr = Math.min(1.8, rawMag / CFG.maxDrag);
-      setZoom(Math.max(CFG.zoomMin, 1 - CFG.zoomAmt * zr));
+      const powerRatio = cap / CFG.maxDrag;
+      setPower(powerRatio);
+      const targetZoom = Math.max(CFG.zoomMin, 1 - CFG.zoomAmt * powerRatio);
+      setZoom(targetZoom);
 
       // Broadcast live aim to opponent in online mode
       if (st.mode === "online") {
