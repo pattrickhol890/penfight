@@ -17,10 +17,12 @@ const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 function makePen(x, y, owner) {
   const b = Bodies.rectangle(x, y, CFG.penLen, CFG.penW, {
     frictionAir: CFG.frictionAir,
-    friction: 0.05,
-    restitution: 0.45,
+    friction: 0.08,
+    frictionStatic: 0.5,
+    restitution: 0.32,
     density: 0.004,
     chamfer: { radius: CFG.penW / 2 },
+    slop: 0.02,
   });
   Body.setAngle(b, Math.PI / 2); // point toward opponent
   b.penData = { owner, hue: owner === "p1" ? INK.p1 : INK.p2, id: Math.random().toString(36).slice(2) };
@@ -29,6 +31,7 @@ function makePen(x, y, owner) {
 
 export default function PenFight() {
   const canvasRef = useRef(null);
+  const wrapperRef = useRef(null);
   const g = useRef({
     engine: null,
     pens: [],
@@ -65,7 +68,7 @@ export default function PenFight() {
     Events.on(engine, "collisionStart", (e) => {
       for (const p of e.pairs) {
         const v = Math.max(speedOf(p.bodyA), speedOf(p.bodyB));
-        if (v > 1.4) sound.play("click", v / 18);
+        if (v > 0.6) sound.play("clack", Math.min(1, v / 16));
       }
     });
 
@@ -203,11 +206,15 @@ export default function PenFight() {
     raf = requestAnimationFrame(loop);
 
     // ---- Pointer / touch input ----
+    const wrap = wrapperRef.current;
     const getPoint = (e) => {
-      const r = canvas.getBoundingClientRect();
+      const r = wrap.getBoundingClientRect();
       const cx = e.touches ? e.touches[0].clientX : e.clientX;
       const cy = e.touches ? e.touches[0].clientY : e.clientY;
-      return { x: (cx - r.left) * (canvas.width / r.width), y: (cy - r.top) * (canvas.height / r.height) };
+      return { x: (cx - r.left) * (CFG.W / r.width), y: (cy - r.top) * (CFG.H / r.height) };
+    };
+    const setZoom = (z) => {
+      canvas.style.transform = `scale(${z})`;
     };
 
     const onDown = (e) => {
@@ -218,15 +225,30 @@ export default function PenFight() {
       const own = st.pens.filter((p) => p.penData.owner === st.turn);
       const hit = Query.point(own, pt)[0];
       if (!hit) return;
-      st.aiming = { pen: hit, start: pt, current: pt };
+      const r = wrap.getBoundingClientRect();
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      const cy = e.touches ? e.touches[0].clientY : e.clientY;
+      st.aiming = { pen: hit, start: pt, current: pt, startClient: { x: cx, y: cy }, baseScale: CFG.W / r.width };
+      sound.play("grab");
       e.preventDefault();
     };
     const onMove = (e) => {
       const st = g.current;
       if (!st.aiming) return;
-      st.aiming.current = getPoint(e);
-      const dv = { x: st.aiming.pen.position.x - st.aiming.current.x, y: st.aiming.pen.position.y - st.aiming.current.y };
-      setPower(Math.min(CFG.maxDrag, Math.hypot(dv.x, dv.y)) / CFG.maxDrag);
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      const cy = e.touches ? e.touches[0].clientY : e.clientY;
+      const bs = st.aiming.baseScale;
+      const logdx = (cx - st.aiming.startClient.x) * bs;
+      const logdy = (cy - st.aiming.startClient.y) * bs;
+      const rawMag = Math.hypot(logdx, logdy);
+      const cap = Math.min(rawMag, CFG.maxDrag);
+      const nx = rawMag > 0 ? logdx / rawMag : 0;
+      const ny = rawMag > 0 ? logdy / rawMag : 0;
+      st.aiming.current = { x: st.aiming.start.x + nx * cap, y: st.aiming.start.y + ny * cap };
+      setPower(cap / CFG.maxDrag);
+      // Shrink the table the further you drag (any direction) so the cursor stays in frame.
+      const zr = Math.min(1.8, rawMag / CFG.maxDrag);
+      setZoom(Math.max(CFG.zoomMin, 1 - CFG.zoomAmt * zr));
       e.preventDefault();
     };
     const onUp = () => {
@@ -234,13 +256,15 @@ export default function PenFight() {
       if (!st.aiming) return;
       const pen = st.aiming.pen;
       const grab = st.aiming.start;
-      const dv = { x: pen.position.x - st.aiming.current.x, y: pen.position.y - st.aiming.current.y };
-      const mag = Math.min(CFG.maxDrag, Math.hypot(dv.x, dv.y));
+      const dv = { x: grab.x - st.aiming.current.x, y: grab.y - st.aiming.current.y };
+      const rawMag = Math.hypot(dv.x, dv.y);
       st.aiming = null;
       setPower(0);
-      if (mag < 10) return;
+      setZoom(1);
+      if (rawMag < 10) return;
+      const mag = Math.min(CFG.maxDrag, rawMag);
       const ratio = mag / CFG.maxDrag;
-      const dir = { x: dv.x / mag, y: dv.y / mag };
+      const dir = { x: dv.x / rawMag, y: dv.y / rawMag };
       const speed = ratio * CFG.maxSpeed;
       const v = { x: dir.x * speed, y: dir.y * speed };
       // Off-center impulse: hitting away from the pen's center induces spin (torque).
@@ -259,19 +283,19 @@ export default function PenFight() {
       setTurnState("moving");
     };
 
-    canvas.addEventListener("mousedown", onDown);
+    wrap.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-    canvas.addEventListener("touchstart", onDown, { passive: false });
+    wrap.addEventListener("touchstart", onDown, { passive: false });
     window.addEventListener("touchmove", onMove, { passive: false });
     window.addEventListener("touchend", onUp);
 
     return () => {
       cancelAnimationFrame(raf);
-      canvas.removeEventListener("mousedown", onDown);
+      wrap.removeEventListener("mousedown", onDown);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      canvas.removeEventListener("touchstart", onDown);
+      wrap.removeEventListener("touchstart", onDown);
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onUp);
       Events.off(engine);
@@ -340,13 +364,18 @@ export default function PenFight() {
 
       {/* Game canvas */}
       <div className="absolute inset-0 flex items-center justify-center p-3">
-        <div className="relative w-full max-w-[min(94vw,calc(88vh*1.5))] aspect-[3/2]">
+        <div ref={wrapperRef} className="relative w-full max-w-[min(94vw,calc(88vh*1.5))] aspect-[3/2]">
           <canvas
             ref={canvasRef}
             width={CFG.W}
             height={CFG.H}
             className="h-full w-full touch-none rounded-lg"
-            style={{ cursor: turnState === "aim" ? "grab" : "default" }}
+            style={{
+              cursor: turnState === "aim" ? "grab" : "default",
+              transformOrigin: "center center",
+              transition: "transform 0.14s ease-out",
+              willChange: "transform",
+            }}
             data-testid="game-canvas"
           />
           {phase === "playing" && (

@@ -35,6 +35,30 @@ class SoundManager {
     osc.stop(now + dur + 0.02);
   }
 
+  _noise({ dur = 0.06, gain = 0.25, freq = 2200, q = 0.9 }) {
+    if (this.muted || !this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const len = Math.max(1, Math.ceil(ctx.sampleRate * dur));
+    const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = freq;
+    bp.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gain, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(ctx.destination);
+    src.start(now);
+    src.stop(now + dur + 0.02);
+  }
+
   play(kind, intensity = 1) {
     if (this.muted) return;
     this.ensure();
@@ -44,11 +68,20 @@ class SoundManager {
       case "flick":
         this._blip({ freq: 220 + i * 260, type: "triangle", dur: 0.18, gain: 0.22 * i, slideTo: 120 });
         break;
+      case "clack":
+        // wooden/plastic pen knock: quick noise transient + short low tone
+        this._noise({ dur: 0.045, gain: 0.28 * i, freq: 2400 + i * 1200, q: 0.7 });
+        this._blip({ freq: 150 + i * 160, type: "square", dur: 0.05, gain: 0.13 * i, slideTo: 90 });
+        break;
+      case "grab":
+        this._blip({ freq: 520, type: "sine", dur: 0.05, gain: 0.1 });
+        break;
       case "click":
         this._blip({ freq: 320 + i * 500, type: "square", dur: 0.05, gain: 0.16 * i });
         break;
       case "thud":
-        this._blip({ freq: 140, type: "sine", dur: 0.22, gain: 0.3, slideTo: 60 });
+        this._noise({ dur: 0.12, gain: 0.22, freq: 400, q: 0.5 });
+        this._blip({ freq: 140, type: "sine", dur: 0.22, gain: 0.3, slideTo: 55 });
         break;
       case "win":
         [523, 659, 784, 1047].forEach((f, k) =>

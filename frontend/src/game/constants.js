@@ -12,6 +12,8 @@ export const CFG = {
   maxMovingMs: 6500,
   spinFactor: 0.6,
   maxOmega: 0.45,
+  zoomAmt: 0.34,
+  zoomMin: 0.42,
 };
 
 // The playable table surface. Outside this rect = pen fell off the table.
