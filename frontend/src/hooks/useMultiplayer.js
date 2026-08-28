@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 
 function getWsUrl() {
   const backend = process.env.REACT_APP_BACKEND_URL || window.location.origin;
@@ -9,6 +9,7 @@ function getWsUrl() {
 
 export function useMultiplayer() {
   const wsRef = useRef(null);
+  const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
   const [roomCode, setRoomCode] = useState(null);
   const [role, setRole] = useState(null); // 'p1' | 'p2'
@@ -20,26 +21,71 @@ export function useMultiplayer() {
   const [opponentLeft, setOpponentLeft] = useState(false);
   const [rematchTrigger, setRematchTrigger] = useState(0);
 
-  const connect = useCallback(() => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+  const initSocket = useCallback(() => {
+    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return wsRef.current;
     }
+
     const url = getWsUrl();
+    console.log('[Multiplayer] Connecting to:', url);
+    setConnecting(true);
+    setErrorMessage(null);
+
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      console.log('[Multiplayer] WebSocket connected');
       setConnected(true);
+      setConnecting(false);
       setErrorMessage(null);
     };
 
-    ws.onclose = () => {
-      setConnected(false);
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        console.log('[Multiplayer] Received:', msg);
+        if (msg.type === 'ROOM_CREATED') {
+          setRoomCode(msg.room_code);
+          setRole('p1');
+          setOpponentJoined(false);
+          setConnecting(false);
+        } else if (msg.type === 'GAME_START') {
+          setRoomCode(msg.room_code);
+          setRole(msg.role);
+          setOpponentJoined(true);
+          setOpponentLeft(false);
+          setConnecting(false);
+        } else if (msg.type === 'OPPONENT_AIM') {
+          setOpponentAim(msg.aim);
+        } else if (msg.type === 'OPPONENT_FLICK') {
+          setOpponentFlick(msg);
+        } else if (msg.type === 'STATE_SYNCED') {
+          setSyncedState(msg);
+        } else if (msg.type === 'OPPONENT_LEFT') {
+          setOpponentLeft(true);
+        } else if (msg.type === 'REMATCH_START') {
+          setRole(msg.role);
+          setRematchTrigger((prev) => prev + 1);
+        } else if (msg.type === 'ERROR') {
+          setErrorMessage(msg.message);
+          setConnecting(false);
+        }
+      } catch (err) {
+        console.error('[Multiplayer] Failed to parse message:', err);
+      }
     };
 
     ws.onerror = (err) => {
-      console.warn('WebSocket error:', err);
-      setErrorMessage('Failed to connect to multiplayer server.');
+      console.warn('[Multiplayer] WebSocket error:', err);
+      setErrorMessage('Could not connect to backend server. If using Render free tier, it may be waking up (wait 20s).');
+      setConnecting(false);
+    };
+
+    ws.onclose = () => {
+      console.log('[Multiplayer] WebSocket closed');
+      setConnected(false);
+      setConnecting(false);
     };
 
     return ws;
@@ -48,35 +94,41 @@ export function useMultiplayer() {
   const createRoom = useCallback(() => {
     setErrorMessage(null);
     setOpponentLeft(false);
-    const ws = connect();
-    const send = () => {
+    setConnecting(true);
+    const ws = initSocket();
+
+    const sendCreate = () => {
       ws.send(JSON.stringify({ type: 'CREATE_ROOM' }));
     };
+
     if (ws.readyState === WebSocket.OPEN) {
-      send();
+      sendCreate();
     } else {
-      ws.addEventListener('open', send, { once: true });
+      ws.addEventListener('open', sendCreate, { once: true });
     }
-  }, [connect]);
+  }, [initSocket]);
 
   const joinRoom = useCallback((code) => {
-    setErrorMessage(null);
-    setOpponentLeft(false);
     const cleanCode = (code || '').trim().toUpperCase();
     if (!cleanCode) {
       setErrorMessage('Please enter a room code.');
       return;
     }
-    const ws = connect();
-    const send = () => {
+    setErrorMessage(null);
+    setOpponentLeft(false);
+    setConnecting(true);
+    const ws = initSocket();
+
+    const sendJoin = () => {
       ws.send(JSON.stringify({ type: 'JOIN_ROOM', room_code: cleanCode }));
     };
+
     if (ws.readyState === WebSocket.OPEN) {
-      send();
+      sendJoin();
     } else {
-      ws.addEventListener('open', send, { once: true });
+      ws.addEventListener('open', sendJoin, { once: true });
     }
-  }, [connect]);
+  }, [initSocket]);
 
   const sendAim = useCallback((aim) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -115,89 +167,11 @@ export function useMultiplayer() {
     setSyncedState(null);
     setOpponentLeft(false);
     setErrorMessage(null);
-  }, []);
-
-  useEffect(() => {
-    const handleMessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        if (msg.type === 'ROOM_CREATED') {
-          setRoomCode(msg.room_code);
-          setRole('p1');
-          setOpponentJoined(false);
-        } else if (msg.type === 'GAME_START') {
-          setRoomCode(msg.room_code);
-          setRole(msg.role);
-          setOpponentJoined(true);
-          setOpponentLeft(false);
-        } else if (msg.type === 'OPPONENT_AIM') {
-          setOpponentAim(msg.aim);
-        } else if (msg.type === 'OPPONENT_FLICK') {
-          setOpponentFlick(msg);
-        } else if (msg.type === 'STATE_SYNCED') {
-          setSyncedState(msg);
-        } else if (msg.type === 'OPPONENT_LEFT') {
-          setOpponentLeft(true);
-        } else if (msg.type === 'REMATCH_START') {
-          setRole(msg.role);
-          setRematchTrigger((prev) => prev + 1);
-        } else if (msg.type === 'ERROR') {
-          setErrorMessage(msg.message);
-        }
-      } catch (err) {
-        console.error('Failed to parse WS message:', err);
-      }
-    };
-
-    const ws = wsRef.current;
-    if (ws) {
-      ws.addEventListener('message', handleMessage);
-      return () => {
-        ws.removeEventListener('message', handleMessage);
-      };
-    }
-  }, [connected]);
-
-  // Keep message listener active on connection
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (wsRef.current && wsRef.current.onmessage === null) {
-        wsRef.current.onmessage = (e) => {
-          try {
-            const msg = JSON.parse(e.data);
-            if (msg.type === 'ROOM_CREATED') {
-              setRoomCode(msg.room_code);
-              setRole('p1');
-              setOpponentJoined(false);
-            } else if (msg.type === 'GAME_START') {
-              setRoomCode(msg.room_code);
-              setRole(msg.role);
-              setOpponentJoined(true);
-              setOpponentLeft(false);
-            } else if (msg.type === 'OPPONENT_AIM') {
-              setOpponentAim(msg.aim);
-            } else if (msg.type === 'OPPONENT_FLICK') {
-              setOpponentFlick(msg);
-            } else if (msg.type === 'STATE_SYNCED') {
-              setSyncedState(msg);
-            } else if (msg.type === 'OPPONENT_LEFT') {
-              setOpponentLeft(true);
-            } else if (msg.type === 'REMATCH_START') {
-              setRole(msg.role);
-              setRematchTrigger((prev) => prev + 1);
-            } else if (msg.type === 'ERROR') {
-              setErrorMessage(msg.message);
-            }
-          } catch (err) {
-            console.error(err);
-          }
-        };
-      }
-    }, 500);
-    return () => clearInterval(interval);
+    setConnecting(false);
   }, []);
 
   return {
+    connecting,
     connected,
     roomCode,
     role,

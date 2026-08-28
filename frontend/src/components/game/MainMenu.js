@@ -157,9 +157,17 @@ export default function MainMenu({ onStart, muted, onToggleMute, mp }) {
                 {!mp?.roomCode ? (
                   <button
                     onClick={() => mp?.createRoom()}
-                    className="w-full border-2 border-[#141E50] bg-[#F5D76E] py-2.5 font-mono text-sm font-bold uppercase tracking-wider text-[#141E50] shadow-sm hover:scale-[1.02]"
+                    disabled={mp?.connecting}
+                    className="w-full flex items-center justify-center gap-2 border-2 border-[#141E50] bg-[#F5D76E] py-2.5 font-mono text-sm font-bold uppercase tracking-wider text-[#141E50] shadow-sm hover:scale-[1.02] disabled:opacity-75"
                   >
-                    Generate Room Code
+                    {mp?.connecting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin text-[#141E50]" />
+                        <span>Connecting & Generating...</span>
+                      </>
+                    ) : (
+                      "Generate Room Code"
+                    )}
                   </button>
                 ) : (
                   <div className="w-full text-center">
@@ -198,10 +206,17 @@ export default function MainMenu({ onStart, muted, onToggleMute, mp }) {
                 </div>
                 <button
                   onClick={() => mp?.joinRoom(joinCode)}
-                  disabled={!joinCode.trim()}
-                  className="w-full border-2 border-[#141E50] bg-[#141E50] py-2.5 font-mono text-sm font-bold uppercase tracking-wider text-[#F5F2EB] shadow-sm hover:scale-[1.02] disabled:opacity-50"
+                  disabled={!joinCode.trim() || mp?.connecting}
+                  className="w-full flex items-center justify-center gap-2 border-2 border-[#141E50] bg-[#141E50] py-2.5 font-mono text-sm font-bold uppercase tracking-wider text-[#F5F2EB] shadow-sm hover:scale-[1.02] disabled:opacity-50"
                 >
-                  Join Match
+                  {mp?.connecting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin text-white" />
+                      <span>Connecting...</span>
+                    </>
+                  ) : (
+                    "Join Match"
+                  )}
                 </button>
               </div>
             )}
