@@ -88,6 +88,14 @@ export default function PenFight() {
     const { pens, turn: nextTurn, p1Score, p2Score } = mp.syncedState;
 
     if (pens && Array.isArray(pens)) {
+      // Remove any pens that got knocked off on the shooter's screen
+      const liveIds = new Set(pens.map((p) => p.id));
+      const deadPens = st.pens.filter((p) => !liveIds.has(p.penData.id));
+      deadPens.forEach((p) => {
+        World.remove(st.engine.world, p);
+      });
+      st.pens = st.pens.filter((p) => liveIds.has(p.penData.id));
+
       pens.forEach((pData) => {
         const localPen = st.pens.find((p) => p.penData.id === pData.id);
         if (localPen) {
@@ -231,14 +239,15 @@ export default function PenFight() {
         finishGame(p1Count === 0 ? "p2" : "p1");
         return;
       }
-      const next = st.turn === "p1" ? "p2" : "p1";
+      const prevTurn = st.turn;
+      const next = prevTurn === "p1" ? "p2" : "p1";
       st.turn = next;
       st.turnState = "aim";
       setTurn(next);
       setTurnState("aim");
 
-      // In online mode, the active player syncs the final settled coordinates with opponent
-      if (st.mode === "online" && st.turn === mp.role) {
+      // In online mode, the player who just took the shot syncs the settled coordinates with the opponent
+      if (st.mode === "online" && prevTurn === mp.role) {
         const snapshot = st.pens.map((p) => ({
           id: p.penData.id,
           x: p.position.x,

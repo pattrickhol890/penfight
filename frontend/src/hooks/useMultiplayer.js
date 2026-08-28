@@ -59,9 +59,9 @@ export function useMultiplayer() {
         } else if (msg.type === 'OPPONENT_AIM') {
           setOpponentAim(msg.aim);
         } else if (msg.type === 'OPPONENT_FLICK') {
-          setOpponentFlick(msg);
+          setOpponentFlick({ ...msg, _t: Date.now() });
         } else if (msg.type === 'STATE_SYNCED') {
-          setSyncedState(msg);
+          setSyncedState({ ...msg, _t: Date.now() });
         } else if (msg.type === 'OPPONENT_LEFT') {
           setOpponentLeft(true);
         } else if (msg.type === 'REMATCH_START') {
