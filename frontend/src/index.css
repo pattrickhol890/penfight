@@ -9,6 +9,25 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Custom compact scrollbar for mobile landscape modal dialogs */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(20, 30, 80, 0.05);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(20, 30, 80, 0.3);
+  border-radius: 4px;
 }
 
 @layer base {

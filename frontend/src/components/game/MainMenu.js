@@ -54,12 +54,12 @@ export default function MainMenu({ onStart, muted, onToggleMute, mp }) {
   };
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center p-4">
+    <div className="absolute inset-0 z-30 flex items-center justify-center p-2 sm:p-4">
       <motion.div
         initial={{ y: -80, opacity: 0, rotate: -3 }}
         animate={{ y: 0, opacity: 1, rotate: -1.2 }}
         transition={{ type: "spring", stiffness: 120, damping: 14 }}
-        className="relative w-full max-w-md p-6 sm:p-8"
+        className="relative w-full max-w-md max-h-[94vh] overflow-y-auto p-4 sm:p-6"
         style={{
           backgroundColor: "#F5F2EB",
           backgroundImage: `url(${paper})`,

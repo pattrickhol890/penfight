@@ -7,6 +7,7 @@ import { drawBoard, drawPen, drawAim } from "../game/render";
 import MainMenu from "../components/game/MainMenu";
 import Hud from "../components/game/Hud";
 import GameOverModal from "../components/game/GameOverModal";
+import RotateOverlay from "../components/game/RotateOverlay";
 import { useMultiplayer } from "../hooks/useMultiplayer";
 
 const { Engine, World, Bodies, Body, Query, Events } = Matter;
@@ -523,11 +524,12 @@ export default function PenFight() {
       style={{ backgroundImage: `url(${ASSETS.desk})`, backgroundSize: "cover", backgroundPosition: "center" }}
       data-testid="penfight-app"
     >
+      <RotateOverlay />
       <div className="absolute inset-0 bg-[#1a0f08]/45" />
 
       {/* Game canvas */}
-      <div className="absolute inset-0 flex items-center justify-center p-3">
-        <div ref={wrapperRef} className="relative w-full max-w-[min(94vw,calc(88vh*1.5))] aspect-[3/2]">
+      <div className="absolute inset-0 flex items-center justify-center p-1 sm:p-3">
+        <div ref={wrapperRef} className="relative w-full max-w-[min(98vw,calc(96vh*1.5))] aspect-[3/2]">
           <canvas
             ref={canvasRef}
             width={CFG.W}

@@ -27,12 +27,12 @@ export default function GameOverModal({ winner, mode, scores, onReplay, onMenu, 
   }
 
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 p-4" data-testid="gameover-modal">
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 p-2 sm:p-4" data-testid="gameover-modal">
       <motion.div
         initial={{ y: -100, opacity: 0, rotate: 3 }}
         animate={{ y: 0, opacity: 1, rotate: 1.5 }}
         transition={{ type: "spring", stiffness: 130, damping: 13 }}
-        className="w-full max-w-sm p-8 text-center"
+        className="w-full max-w-sm max-h-[94vh] overflow-y-auto p-5 sm:p-8 text-center"
         style={{
           backgroundColor: "#F5F2EB",
           backgroundImage: `url(${paper})`,
