@@ -275,7 +275,14 @@ export default function PenFight() {
           Body.setVelocity(p, { x: 0, y: 0 });
           Body.setAngularVelocity(p, 0);
         });
-        endTurn();
+        if (st.mode === "online") {
+          // In online mode, only the player whose turn it was ends the turn & broadcasts sync!
+          if (st.turn === mp.role) {
+            endTurn();
+          }
+        } else {
+          endTurn();
+        }
       }
     };
 
@@ -332,7 +339,11 @@ export default function PenFight() {
 
       const pt = getPoint(e);
       const own = st.pens.filter((p) => p.penData.owner === st.turn);
-      const hit = Query.point(own, pt)[0];
+      let hit = Query.point(own, pt)[0];
+      if (!hit) {
+        // Proximity fallback to make pen grabbing responsive
+        hit = own.find((p) => dist(p.position, pt) < CFG.penLen / 2 + 18);
+      }
       if (!hit) return;
       const r = wrap.getBoundingClientRect();
       const cx = e.touches ? e.touches[0].clientX : e.clientX;
