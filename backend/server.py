@@ -196,6 +196,7 @@ async def get_stats():
 
 # ---------- WebSocket Real-Time Multiplayer ----------
 @app.websocket("/ws")
+@api_router.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     current_room: Optional[Room] = None
