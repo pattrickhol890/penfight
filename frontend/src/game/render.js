@@ -98,28 +98,36 @@ export function drawPen(ctx, pen) {
 
 export function drawAim(ctx, aiming) {
   const pen = aiming.pen;
+  const strike = aiming.start;
   const dv = { x: pen.position.x - aiming.current.x, y: pen.position.y - aiming.current.y };
   const mag = Math.min(CFG.maxDrag, Math.hypot(dv.x, dv.y));
   if (mag < 4) return;
   const dir = { x: dv.x / (mag || 1), y: dv.y / (mag || 1) };
   const ratio = mag / CFG.maxDrag;
   const len = 40 + ratio * 150;
-  const ex = pen.position.x + dir.x * len;
-  const ey = pen.position.y + dir.y * len;
+  const ex = strike.x + dir.x * len;
+  const ey = strike.y + dir.y * len;
 
   ctx.save();
-  // pull-back guide
+  // selected pen ring
+  ctx.strokeStyle = "rgba(245,215,110,0.9)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(pen.position.x, pen.position.y, CFG.penLen / 2 + 6, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // pull-back guide (from the strike point)
   ctx.strokeStyle = "rgba(245,215,110,0.5)";
   ctx.setLineDash([6, 8]);
   ctx.lineWidth = 2;
-  line(ctx, pen.position.x, pen.position.y, aiming.current.x, aiming.current.y);
+  line(ctx, strike.x, strike.y, aiming.current.x, aiming.current.y);
   ctx.setLineDash([]);
 
-  // launch arrow
+  // launch arrow from the strike point
   const col = ratio > 0.7 ? "#B42828" : "#F5D76E";
   ctx.strokeStyle = col;
   ctx.lineWidth = 4;
-  line(ctx, pen.position.x, pen.position.y, ex, ey);
+  line(ctx, strike.x, strike.y, ex, ey);
   const a = Math.atan2(dir.y, dir.x);
   ctx.beginPath();
   ctx.moveTo(ex, ey);
@@ -129,12 +137,25 @@ export function drawAim(ctx, aiming) {
   ctx.fillStyle = col;
   ctx.fill();
 
-  // selected pen ring
-  ctx.strokeStyle = "rgba(245,215,110,0.9)";
-  ctx.lineWidth = 2;
+  // strike point marker (where you're hitting the pen)
   ctx.beginPath();
-  ctx.arc(pen.position.x, pen.position.y, CFG.penLen / 2 + 6, 0, Math.PI * 2);
+  ctx.arc(strike.x, strike.y, 5, 0, Math.PI * 2);
+  ctx.fillStyle = "#F5F2EB";
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#B42828";
   ctx.stroke();
+
+  // spin hint: curved arc if hit is off-center
+  const rOff = Math.hypot(strike.x - pen.position.x, strike.y - pen.position.y);
+  if (rOff > CFG.penLen * 0.18) {
+    const cr = strike.x - pen.position.x >= 0 || strike.y - pen.position.y >= 0 ? 1 : -1;
+    ctx.strokeStyle = "rgba(30,58,138,0.7)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(pen.position.x, pen.position.y, CFG.penLen / 2 + 14, -0.6 * cr, 0.6 * cr);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 

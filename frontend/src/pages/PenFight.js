@@ -134,8 +134,19 @@ export default function PenFight() {
       let ang = Math.atan2(target.position.y - best.position.y, target.position.x - best.position.x);
       ang += (Math.random() * 2 - 1) * jitter;
       const speed = CFG.maxSpeed * powerMul * (0.85 + Math.random() * 0.15);
-      Body.setVelocity(best, { x: Math.cos(ang) * speed, y: Math.sin(ang) * speed });
-      Body.setAngularVelocity(best, (Math.random() * 2 - 1) * 0.05);
+      const v = { x: Math.cos(ang) * speed, y: Math.sin(ang) * speed };
+      // AI strikes slightly off-center for realistic spin (accurate AI aims closer to center)
+      const m = best.mass;
+      const I = best.inertia || 1;
+      const offMax = CFG.penLen * 0.42 * (diff === "hard" ? 0.4 : diff === "medium" ? 0.75 : 1);
+      const off = (Math.random() * 2 - 1) * offMax;
+      const axis = { x: Math.cos(best.angle), y: Math.sin(best.angle) };
+      const r = { x: axis.x * off, y: axis.y * off };
+      const cross = r.x * v.y * m - r.y * v.x * m;
+      let omega = (cross / I) * CFG.spinFactor;
+      omega = Math.max(-CFG.maxOmega, Math.min(CFG.maxOmega, omega));
+      Body.setVelocity(best, v);
+      Body.setAngularVelocity(best, omega);
       sound.play("flick", speed / CFG.maxSpeed);
       st.turnState = "moving";
       st.moveStart = performance.now();
@@ -160,7 +171,7 @@ export default function PenFight() {
 
     const checkRest = (now) => {
       const st = g.current;
-      const moving = st.pens.some((p) => speedOf(p) > CFG.restThreshold);
+      const moving = st.pens.some((p) => speedOf(p) > CFG.restThreshold || Math.abs(p.angularVelocity) > 0.035);
       const timedOut = now - st.moveStart > CFG.maxMovingMs;
       if (!moving || timedOut) {
         st.pens.forEach((p) => {
@@ -222,6 +233,7 @@ export default function PenFight() {
       const st = g.current;
       if (!st.aiming) return;
       const pen = st.aiming.pen;
+      const grab = st.aiming.start;
       const dv = { x: pen.position.x - st.aiming.current.x, y: pen.position.y - st.aiming.current.y };
       const mag = Math.min(CFG.maxDrag, Math.hypot(dv.x, dv.y));
       st.aiming = null;
@@ -230,8 +242,17 @@ export default function PenFight() {
       const ratio = mag / CFG.maxDrag;
       const dir = { x: dv.x / mag, y: dv.y / mag };
       const speed = ratio * CFG.maxSpeed;
-      Body.setVelocity(pen, { x: dir.x * speed, y: dir.y * speed });
-      Body.setAngularVelocity(pen, (Math.random() * 2 - 1) * 0.05);
+      const v = { x: dir.x * speed, y: dir.y * speed };
+      // Off-center impulse: hitting away from the pen's center induces spin (torque).
+      // J = m*v applied at grab point -> omega = (r x J) / I
+      const m = pen.mass;
+      const I = pen.inertia || 1;
+      const r = { x: grab.x - pen.position.x, y: grab.y - pen.position.y };
+      const cross = r.x * v.y * m - r.y * v.x * m;
+      let omega = (cross / I) * CFG.spinFactor;
+      omega = Math.max(-CFG.maxOmega, Math.min(CFG.maxOmega, omega));
+      Body.setVelocity(pen, v);
+      Body.setAngularVelocity(pen, omega);
       sound.play("flick", ratio);
       st.turnState = "moving";
       st.moveStart = performance.now();

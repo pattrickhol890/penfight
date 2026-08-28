@@ -10,6 +10,8 @@ export const CFG = {
   frictionAir: 0.045,
   restThreshold: 0.12,
   maxMovingMs: 6500,
+  spinFactor: 0.6,
+  maxOmega: 0.45,
 };
 
 // The playable table surface. Outside this rect = pen fell off the table.
