@@ -1,6 +1,6 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Volume2, VolumeX, LogOut } from "lucide-react";
+import { Volume2, VolumeX, LogOut, Globe, AlertTriangle } from "lucide-react";
 
 const PenRow = ({ count, color, testId }) => (
   <div className="flex gap-1" data-testid={testId}>
@@ -11,20 +11,22 @@ const PenRow = ({ count, color, testId }) => (
   </div>
 );
 
-export default function Hud({ scores, turn, turnState, mode, difficulty, muted, power, onToggleMute, onQuit }) {
-  const label =
-    mode === "ai"
-      ? turn === "p1"
-        ? "Your turn"
-        : "Computer thinking…"
-      : turn === "p1"
-      ? "Blue's turn"
-      : "Red's turn";
+export default function Hud({ scores, turn, turnState, mode, difficulty, muted, power, onToggleMute, onQuit, mp }) {
+  let label = "";
+  if (mode === "ai") {
+    label = turn === "p1" ? "Your turn" : "Computer thinking…";
+  } else if (mode === "online") {
+    const isMyTurn = turn === mp?.role;
+    label = isMyTurn ? "Your turn! (Flick your pen)" : "Opponent's turn…";
+  } else {
+    label = turn === "p1" ? "Blue's turn" : "Red's turn";
+  }
+
   const turnColor = turn === "p1" ? "#1E3A8A" : "#B42828";
 
   return (
     <>
-      {/* Scoreboard - top left, masking-tape look */}
+      {/* Scoreboard - top left */}
       <div
         className="absolute left-2 top-2 z-20 -rotate-2 px-3 py-2 shadow-[3px_5px_12px_rgba(20,10,0,0.5)]"
         style={{ backgroundColor: "#F5F2EB", borderRadius: "2px 20px 2px 20px" }}
@@ -32,18 +34,25 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
       >
         <div className="mb-1 flex items-center gap-2">
           <span className="font-mono text-xs font-bold text-[#1E3A8A]" data-testid="p1-score">
-            {mode === "ai" ? "YOU" : "BLUE"} {scores.p1}
+            {mode === "online" ? (mp?.role === "p1" ? "YOU (P1)" : "OPPONENT (P1)") : mode === "ai" ? "YOU" : "BLUE"} {scores.p1}
           </span>
           <PenRow count={scores.p1} color="#1E3A8A" testId="p1-pens" />
         </div>
         <div className="flex items-center gap-2">
           <span className="font-mono text-xs font-bold text-[#B42828]" data-testid="p2-score">
-            {mode === "ai" ? "CPU" : "RED"} {scores.p2}
+            {mode === "online" ? (mp?.role === "p2" ? "YOU (P2)" : "OPPONENT (P2)") : mode === "ai" ? "CPU" : "RED"} {scores.p2}
           </span>
           <PenRow count={scores.p2} color="#B42828" testId="p2-pens" />
         </div>
+
         {mode === "ai" && (
           <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-[#141E50]/60">{difficulty}</p>
+        )}
+        {mode === "online" && mp?.roomCode && (
+          <div className="mt-1 flex items-center gap-1 border-t border-[#141E50]/20 pt-1">
+            <Globe className="h-3 w-3 text-[#141E50]/70" />
+            <span className="font-mono text-[10px] font-bold text-[#141E50]">Room: {mp.roomCode}</span>
+          </div>
         )}
       </div>
 
@@ -59,10 +68,18 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
           data-testid="turn-indicator"
         >
           <span className="font-mono text-sm font-bold" style={{ color: turnColor }}>
-            {turnState === "moving" ? "…" : label}
+            {turnState === "moving" ? "Rolling physics…" : label}
           </span>
         </motion.div>
       </AnimatePresence>
+
+      {/* Opponent Left Alert Banner */}
+      {mode === "online" && mp?.opponentLeft && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded bg-amber-100 border border-amber-400 px-4 py-2 text-amber-900 font-mono text-xs shadow-lg">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <span>Opponent has disconnected.</span>
+        </div>
+      )}
 
       {/* Controls - top right */}
       <div className="absolute right-2 top-2 z-20 flex gap-2">
@@ -82,7 +99,7 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
         </button>
       </div>
 
-      {/* Power meter - bottom center, ruler style */}
+      {/* Power meter - bottom center */}
       <AnimatePresence>
         {power > 0.01 && (
           <motion.div

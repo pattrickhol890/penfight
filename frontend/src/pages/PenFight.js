@@ -7,14 +7,15 @@ import { drawBoard, drawPen, drawAim } from "../game/render";
 import MainMenu from "../components/game/MainMenu";
 import Hud from "../components/game/Hud";
 import GameOverModal from "../components/game/GameOverModal";
+import { useMultiplayer } from "../hooks/useMultiplayer";
 
 const { Engine, World, Bodies, Body, Query, Events } = Matter;
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${process.env.REACT_APP_BACKEND_URL || ""}/api`;
 
 const speedOf = (b) => Math.hypot(b.velocity.x, b.velocity.y);
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
-function makePen(x, y, owner) {
+function makePen(x, y, owner, id) {
   const b = Bodies.rectangle(x, y, CFG.penLen, CFG.penW, {
     frictionAir: CFG.frictionAir,
     friction: 0.08,
@@ -25,13 +26,15 @@ function makePen(x, y, owner) {
     slop: 0.02,
   });
   Body.setAngle(b, Math.PI / 2); // point toward opponent
-  b.penData = { owner, hue: owner === "p1" ? INK.p1 : INK.p2, id: Math.random().toString(36).slice(2) };
+  b.penData = { owner, hue: owner === "p1" ? INK.p1 : INK.p2, id: id || Math.random().toString(36).slice(2) };
   return b;
 }
 
 export default function PenFight() {
   const canvasRef = useRef(null);
   const wrapperRef = useRef(null);
+  const mp = useMultiplayer();
+
   const g = useRef({
     engine: null,
     pens: [],
@@ -54,6 +57,90 @@ export default function PenFight() {
   const [mode, setMode] = useState("ai");
   const [difficulty, setDifficulty] = useState("medium");
   const [winner, setWinner] = useState(null);
+
+  // Auto-start online match when opponent joins
+  useEffect(() => {
+    if (mp.opponentJoined && phase === "menu") {
+      startGame("online", null);
+    }
+  }, [mp.opponentJoined, phase]);
+
+  // Handle opponent flick in online mode
+  useEffect(() => {
+    if (!mp.opponentFlick || mode !== "online") return;
+    const st = g.current;
+    const { penId, v, omega, ratio } = mp.opponentFlick;
+    const pen = st.pens.find((p) => p.penData.id === penId);
+    if (pen) {
+      Body.setVelocity(pen, v);
+      Body.setAngularVelocity(pen, omega);
+      sound.play("flick", ratio || 0.8);
+      st.turnState = "moving";
+      st.moveStart = performance.now();
+      setTurnState("moving");
+    }
+  }, [mp.opponentFlick, mode]);
+
+  // Handle state sync from opponent
+  useEffect(() => {
+    if (!mp.syncedState || mode !== "online") return;
+    const st = g.current;
+    const { pens, turn: nextTurn, p1Score, p2Score } = mp.syncedState;
+
+    if (pens && Array.isArray(pens)) {
+      pens.forEach((pData) => {
+        const localPen = st.pens.find((p) => p.penData.id === pData.id);
+        if (localPen) {
+          Body.setPosition(localPen, { x: pData.x, y: pData.y });
+          Body.setAngle(localPen, pData.angle);
+          Body.setVelocity(localPen, { x: 0, y: 0 });
+          Body.setAngularVelocity(localPen, 0);
+        }
+      });
+    }
+    st.turn = nextTurn;
+    st.turnState = "aim";
+    setTurn(nextTurn);
+    setTurnState("aim");
+    if (p1Score !== undefined && p2Score !== undefined) {
+      setScores({ p1: p1Score, p2: p2Score });
+    }
+  }, [mp.syncedState, mode]);
+
+  // Handle rematch trigger
+  useEffect(() => {
+    if (mp.rematchTrigger > 0 && mode === "online") {
+      startGame("online", null);
+    }
+  }, [mp.rematchTrigger, mode]);
+
+  // Handle opponent disconnection
+  useEffect(() => {
+    if (mp.opponentLeft && phase === "playing" && mode === "online") {
+      finishGame(mp.role || "p1");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mp.opponentLeft, phase, mode, mp.role]);
+
+  const finishGame = (w) => {
+    const st = g.current;
+    st.turnState = "done";
+    st.phase = "gameover";
+    setPhase("gameover");
+    setWinner(w);
+    const playerWon = st.mode === "ai" ? w === "p1" : st.mode === "online" ? w === mp.role : true;
+    sound.play(!playerWon ? "lose" : "win");
+
+    const body = {
+      mode: st.mode,
+      difficulty: st.mode === "ai" ? st.difficulty : null,
+      winner: w,
+      p1_pens_left: st.pens.filter((p) => p.penData.owner === "p1").length,
+      p2_pens_left: st.pens.filter((p) => p.penData.owner === "p2").length,
+      duration_sec: Math.round((Date.now() - st.startTime) / 1000),
+    };
+    axios.post(`${API}/matches`, body).catch(() => {});
+  };
 
   useEffect(() => {
     const engine = Engine.create();
@@ -94,25 +181,6 @@ export default function PenFight() {
       }
     };
 
-    const finishGame = (w) => {
-      const st = g.current;
-      st.turnState = "done";
-      st.phase = "gameover";
-      setPhase("gameover");
-      setWinner(w);
-      const playerWon = st.mode === "ai" ? w === "p1" : true;
-      sound.play(st.mode === "ai" && !playerWon ? "lose" : "win");
-      const body = {
-        mode: st.mode,
-        difficulty: st.mode === "ai" ? st.difficulty : null,
-        winner: w,
-        p1_pens_left: st.pens.filter((p) => p.penData.owner === "p1").length,
-        p2_pens_left: st.pens.filter((p) => p.penData.owner === "p2").length,
-        duration_sec: Math.round((Date.now() - st.startTime) / 1000),
-      };
-      axios.post(`${API}/matches`, body).catch(() => {});
-    };
-
     const aiMove = () => {
       const st = g.current;
       if (st.phase !== "playing" || st.turn !== "p2") return;
@@ -138,7 +206,6 @@ export default function PenFight() {
       ang += (Math.random() * 2 - 1) * jitter;
       const speed = CFG.maxSpeed * powerMul * (0.85 + Math.random() * 0.15);
       const v = { x: Math.cos(ang) * speed, y: Math.sin(ang) * speed };
-      // AI strikes slightly off-center for realistic spin (accurate AI aims closer to center)
       const m = best.mass;
       const I = best.inertia || 1;
       const offMax = CFG.penLen * 0.42 * (diff === "hard" ? 0.4 : diff === "medium" ? 0.75 : 1);
@@ -158,10 +225,10 @@ export default function PenFight() {
 
     const endTurn = () => {
       const st = g.current;
-      const p1 = st.pens.filter((p) => p.penData.owner === "p1").length;
-      const p2 = st.pens.filter((p) => p.penData.owner === "p2").length;
-      if (p1 === 0 || p2 === 0) {
-        finishGame(p1 === 0 ? "p2" : "p1");
+      const p1Count = st.pens.filter((p) => p.penData.owner === "p1").length;
+      const p2Count = st.pens.filter((p) => p.penData.owner === "p2").length;
+      if (p1Count === 0 || p2Count === 0) {
+        finishGame(p1Count === 0 ? "p2" : "p1");
         return;
       }
       const next = st.turn === "p1" ? "p2" : "p1";
@@ -169,6 +236,24 @@ export default function PenFight() {
       st.turnState = "aim";
       setTurn(next);
       setTurnState("aim");
+
+      // In online mode, the active player syncs the final settled coordinates with opponent
+      if (st.mode === "online" && st.turn === mp.role) {
+        const snapshot = st.pens.map((p) => ({
+          id: p.penData.id,
+          x: p.position.x,
+          y: p.position.y,
+          angle: p.angle,
+          owner: p.penData.owner,
+        }));
+        mp.sendSync({
+          pens: snapshot,
+          turn: next,
+          p1Score: p1Count,
+          p2Score: p2Count,
+        });
+      }
+
       if (st.mode === "ai" && next === "p2") setTimeout(aiMove, 750);
     };
 
@@ -191,6 +276,18 @@ export default function PenFight() {
       const st = g.current;
       for (const pen of st.pens) drawPen(ctx, pen);
       if (st.aiming) drawAim(ctx, st.aiming);
+
+      // Draw real-time opponent aim arrow in online mode
+      if (st.mode === "online" && mp.opponentAim) {
+        const oppPen = st.pens.find((p) => p.penData.id === mp.opponentAim.penId);
+        if (oppPen) {
+          drawAim(ctx, {
+            pen: oppPen,
+            start: mp.opponentAim.start,
+            current: mp.opponentAim.current,
+          });
+        }
+      }
     };
 
     const loop = (now) => {
@@ -214,13 +311,16 @@ export default function PenFight() {
       return { x: (cx - r.left) * (CFG.W / r.width), y: (cy - r.top) * (CFG.H / r.height) };
     };
     const setZoom = (z) => {
-      canvas.style.transform = `scale(${z})`;
+      canvas.style.transform = scale();
     };
 
     const onDown = (e) => {
       const st = g.current;
       if (st.phase !== "playing" || st.turnState !== "aim") return;
       if (st.mode === "ai" && st.turn !== "p1") return;
+      // In online mode, restrict input to the player's own turn
+      if (st.mode === "online" && st.turn !== mp.role) return;
+
       const pt = getPoint(e);
       const own = st.pens.filter((p) => p.penData.owner === st.turn);
       const hit = Query.point(own, pt)[0];
@@ -232,6 +332,7 @@ export default function PenFight() {
       sound.play("grab");
       e.preventDefault();
     };
+
     const onMove = (e) => {
       const st = g.current;
       if (!st.aiming) return;
@@ -246,11 +347,20 @@ export default function PenFight() {
       const ny = rawMag > 0 ? logdy / rawMag : 0;
       st.aiming.current = { x: st.aiming.start.x + nx * cap, y: st.aiming.start.y + ny * cap };
       setPower(cap / CFG.maxDrag);
-      // Shrink the table the further you drag (any direction) so the cursor stays in frame.
       const zr = Math.min(1.8, rawMag / CFG.maxDrag);
       setZoom(Math.max(CFG.zoomMin, 1 - CFG.zoomAmt * zr));
+
+      // Broadcast live aim to opponent in online mode
+      if (st.mode === "online") {
+        mp.sendAim({
+          penId: st.aiming.pen.penData.id,
+          start: st.aiming.start,
+          current: st.aiming.current,
+        });
+      }
       e.preventDefault();
     };
+
     const onUp = () => {
       const st = g.current;
       if (!st.aiming) return;
@@ -261,26 +371,41 @@ export default function PenFight() {
       st.aiming = null;
       setPower(0);
       setZoom(1);
+
+      if (st.mode === "online") {
+        mp.sendAim(null);
+      }
+
       if (rawMag < 10) return;
       const mag = Math.min(CFG.maxDrag, rawMag);
       const ratio = mag / CFG.maxDrag;
       const dir = { x: dv.x / rawMag, y: dv.y / rawMag };
       const speed = ratio * CFG.maxSpeed;
       const v = { x: dir.x * speed, y: dir.y * speed };
-      // Off-center impulse: hitting away from the pen's center induces spin (torque).
-      // J = m*v applied at grab point -> omega = (r x J) / I
       const m = pen.mass;
       const I = pen.inertia || 1;
       const r = { x: grab.x - pen.position.x, y: grab.y - pen.position.y };
       const cross = r.x * v.y * m - r.y * v.x * m;
       let omega = (cross / I) * CFG.spinFactor;
       omega = Math.max(-CFG.maxOmega, Math.min(CFG.maxOmega, omega));
+
       Body.setVelocity(pen, v);
       Body.setAngularVelocity(pen, omega);
       sound.play("flick", ratio);
       st.turnState = "moving";
       st.moveStart = performance.now();
       setTurnState("moving");
+
+      // Broadcast flick impulse to opponent
+      if (st.mode === "online") {
+        mp.sendFlick({
+          penId: pen.penData.id,
+          v,
+          omega,
+          ratio,
+          grab,
+        });
+      }
     };
 
     wrap.addEventListener("mousedown", onDown);
@@ -302,7 +427,8 @@ export default function PenFight() {
       World.clear(engine.world, false);
       Engine.clear(engine);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mp.role]);
 
   const startGame = (m, diff) => {
     sound.ensure();
@@ -314,8 +440,8 @@ export default function PenFight() {
     const spacing = BOARD.w / (n + 1);
     for (let i = 0; i < n; i++) {
       const x = BOARD.x + spacing * (i + 1);
-      pens.push(makePen(x, BOARD.y + BOARD.h - 72, "p1"));
-      pens.push(makePen(x, BOARD.y + 72, "p2"));
+      pens.push(makePen(x, BOARD.y + BOARD.h - 72, "p1", p1_pen_));
+      pens.push(makePen(x, BOARD.y + 72, "p2", p2_pen_));
     }
     World.add(engine.world, pens);
     Object.assign(st, {
@@ -344,6 +470,9 @@ export default function PenFight() {
     st.pens = [];
     st.phase = "menu";
     st.aiming = null;
+    if (st.mode === "online") {
+      mp.leaveRoom();
+    }
     setPhase("menu");
   };
 
@@ -354,10 +483,18 @@ export default function PenFight() {
     });
   };
 
+  const handleReplay = () => {
+    if (mode === "online") {
+      mp.sendRematch();
+    } else {
+      startGame(g.current.mode, g.current.difficulty);
+    }
+  };
+
   return (
     <div
       className="relative h-screen w-screen overflow-hidden select-none"
-      style={{ backgroundImage: `url(${ASSETS.desk})`, backgroundSize: "cover", backgroundPosition: "center" }}
+      style={{ backgroundImage: url(), backgroundSize: "cover", backgroundPosition: "center" }}
       data-testid="penfight-app"
     >
       <div className="absolute inset-0 bg-[#1a0f08]/45" />
@@ -371,7 +508,7 @@ export default function PenFight() {
             height={CFG.H}
             className="h-full w-full touch-none rounded-lg"
             style={{
-              cursor: turnState === "aim" ? "grab" : "default",
+              cursor: turnState === "aim" && (mode !== "online" || turn === mp.role) ? "grab" : "default",
               transformOrigin: "center center",
               transition: "transform 0.14s ease-out",
               willChange: "transform",
@@ -389,19 +526,21 @@ export default function PenFight() {
               power={power}
               onToggleMute={toggleMute}
               onQuit={quitToMenu}
+              mp={mp}
             />
           )}
         </div>
       </div>
 
-      {phase === "menu" && <MainMenu onStart={startGame} muted={muted} onToggleMute={toggleMute} />}
+      {phase === "menu" && <MainMenu onStart={startGame} muted={muted} onToggleMute={toggleMute} mp={mp} />}
       {phase === "gameover" && (
         <GameOverModal
           winner={winner}
           mode={mode}
           scores={scores}
-          onReplay={() => startGame(g.current.mode, g.current.difficulty)}
+          onReplay={handleReplay}
           onMenu={quitToMenu}
+          mp={mp}
         />
       )}
     </div>
