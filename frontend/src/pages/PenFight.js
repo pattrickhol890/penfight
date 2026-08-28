@@ -90,7 +90,16 @@ export default function PenFight() {
   useEffect(() => {
     if (!mp.syncedState || mode !== "online") return;
     const st = g.current;
-    const { pens, turn: nextTurn, p1Score, p2Score } = mp.syncedState;
+    const { pens, turn: nextTurn, p1Score, p2Score, winner: syncWinner } = mp.syncedState;
+
+    if (p1Score !== undefined && p2Score !== undefined) {
+      setScores({ p1: p1Score, p2: p2Score });
+    }
+
+    if (syncWinner) {
+      finishGame(syncWinner);
+      return;
+    }
 
     if (pens && Array.isArray(pens)) {
       // Remove any pens that got knocked off on the shooter's screen
@@ -115,9 +124,7 @@ export default function PenFight() {
     st.turnState = "aim";
     setTurn(nextTurn);
     setTurnState("aim");
-    if (p1Score !== undefined && p2Score !== undefined) {
-      setScores({ p1: p1Score, p2: p2Score });
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mp.syncedState, mode]);
 
   // Handle rematch trigger
@@ -241,7 +248,17 @@ export default function PenFight() {
       const p1Count = st.pens.filter((p) => p.penData.owner === "p1").length;
       const p2Count = st.pens.filter((p) => p.penData.owner === "p2").length;
       if (p1Count === 0 || p2Count === 0) {
-        finishGame(p1Count === 0 ? "p2" : "p1");
+        const w = p1Count === 0 ? "p2" : "p1";
+        finishGame(w);
+        if (st.mode === "online") {
+          mpRef.current.sendSync({
+            pens: [],
+            winner: w,
+            turn: "done",
+            p1Score: p1Count,
+            p2Score: p2Count,
+          });
+        }
         return;
       }
       const prevTurn = st.turn;
