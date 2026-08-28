@@ -44,7 +44,7 @@ export default function GameOverModal({ winner, mode, scores, onReplay, onMenu, 
         className="w-full max-w-sm max-h-[94vh] overflow-y-auto p-5 sm:p-7 text-center shadow-2xl"
         style={{
           backgroundColor: "#F5F2EB",
-          backgroundImage: url(),
+          backgroundImage: `url(${paper})`,
           backgroundSize: "cover",
           backgroundBlendMode: "multiply",
           boxShadow: "6px 14px 30px rgba(20,10,0,0.65)",
