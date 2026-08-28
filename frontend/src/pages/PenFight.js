@@ -34,6 +34,10 @@ export default function PenFight() {
   const canvasRef = useRef(null);
   const wrapperRef = useRef(null);
   const mp = useMultiplayer();
+  const mpRef = useRef(mp);
+  useEffect(() => {
+    mpRef.current = mp;
+  }, [mp]);
 
   const g = useRef({
     engine: null,
@@ -247,7 +251,7 @@ export default function PenFight() {
       setTurnState("aim");
 
       // In online mode, the player who just took the shot syncs the settled coordinates with the opponent
-      if (st.mode === "online" && prevTurn === mp.role) {
+      if (st.mode === "online" && prevTurn === mpRef.current.role) {
         const snapshot = st.pens.map((p) => ({
           id: p.penData.id,
           x: p.position.x,
@@ -255,7 +259,7 @@ export default function PenFight() {
           angle: p.angle,
           owner: p.penData.owner,
         }));
-        mp.sendSync({
+        mpRef.current.sendSync({
           pens: snapshot,
           turn: next,
           p1Score: p1Count,
@@ -277,7 +281,7 @@ export default function PenFight() {
         });
         if (st.mode === "online") {
           // In online mode, only the player whose turn it was ends the turn & broadcasts sync!
-          if (st.turn === mp.role) {
+          if (st.turn === mpRef.current.role) {
             endTurn();
           }
         } else {
@@ -294,13 +298,14 @@ export default function PenFight() {
       if (st.aiming) drawAim(ctx, st.aiming);
 
       // Draw real-time opponent aim arrow in online mode
-      if (st.mode === "online" && mp.opponentAim) {
-        const oppPen = st.pens.find((p) => p.penData.id === mp.opponentAim.penId);
+      const oppAim = mpRef.current.opponentAim;
+      if (st.mode === "online" && oppAim) {
+        const oppPen = st.pens.find((p) => p.penData.id === oppAim.penId);
         if (oppPen) {
           drawAim(ctx, {
             pen: oppPen,
-            start: mp.opponentAim.start,
-            current: mp.opponentAim.current,
+            start: oppAim.start,
+            current: oppAim.current,
           });
         }
       }
@@ -335,7 +340,7 @@ export default function PenFight() {
       if (st.phase !== "playing" || st.turnState !== "aim") return;
       if (st.mode === "ai" && st.turn !== "p1") return;
       // In online mode, restrict input to the player's own turn
-      if (st.mode === "online" && st.turn !== mp.role) return;
+      if (st.mode === "online" && st.turn !== mpRef.current.role) return;
 
       const pt = getPoint(e);
       const own = st.pens.filter((p) => p.penData.owner === st.turn);
@@ -372,7 +377,7 @@ export default function PenFight() {
 
       // Broadcast live aim to opponent in online mode
       if (st.mode === "online") {
-        mp.sendAim({
+        mpRef.current.sendAim({
           penId: st.aiming.pen.penData.id,
           start: st.aiming.start,
           current: st.aiming.current,
@@ -393,7 +398,7 @@ export default function PenFight() {
       setZoom(1);
 
       if (st.mode === "online") {
-        mp.sendAim(null);
+        mpRef.current.sendAim(null);
       }
 
       if (rawMag < 10) return;
@@ -418,7 +423,7 @@ export default function PenFight() {
 
       // Broadcast flick impulse to opponent
       if (st.mode === "online") {
-        mp.sendFlick({
+        mpRef.current.sendFlick({
           penId: pen.penData.id,
           v,
           omega,
@@ -448,7 +453,7 @@ export default function PenFight() {
       Engine.clear(engine);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mp.role]);
+  }, []);
 
   const startGame = (m, diff) => {
     sound.ensure();
