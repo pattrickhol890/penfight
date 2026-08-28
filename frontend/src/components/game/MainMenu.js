@@ -62,7 +62,7 @@ export default function MainMenu({ onStart, muted, onToggleMute, mp }) {
         className="relative w-full max-w-md p-6 sm:p-8"
         style={{
           backgroundColor: "#F5F2EB",
-          backgroundImage: url(),
+          backgroundImage: `url(${paper})`,
           backgroundSize: "cover",
           backgroundBlendMode: "multiply",
           boxShadow: "6px 12px 26px rgba(20,10,0,0.6)",
