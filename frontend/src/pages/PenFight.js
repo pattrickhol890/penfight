@@ -494,7 +494,7 @@ export default function PenFight() {
   return (
     <div
       className="relative h-screen w-screen overflow-hidden select-none"
-      style={{ backgroundImage: url(), backgroundSize: "cover", backgroundPosition: "center" }}
+      style={{ backgroundImage: `url(${ASSETS.desk})`, backgroundSize: "cover", backgroundPosition: "center" }}
       data-testid="penfight-app"
     >
       <div className="absolute inset-0 bg-[#1a0f08]/45" />
