@@ -1,0 +1,93 @@
+{
+  "theme": "light",
+  "typography": {
+    "fonts": {
+      "heading": "'Caveat', cursive",
+      "body": "'Space Mono', monospace",
+      "accent": "'Caveat Brush', cursive"
+    },
+    "scale": {
+      "h1": "text-6xl tracking-tight leading-none font-bold",
+      "h2": "text-4xl tracking-tight leading-tight",
+      "h3": "text-2xl leading-snug",
+      "body": "text-lg leading-relaxed",
+      "small": "text-sm tracking-widest uppercase font-bold"
+    },
+    "usage": "Use 'Caveat' for primary game titles, win/lose messaging, and hand-written aesthetics. Import them from Google Fonts in index.css. Use 'Space Mono' for scoreboards, turn indicators, and technical game UI elements to simulate a typewriter or technical draft feel. Avoid Inter or standard sans-serifs completely."
+  },
+  "colors": {
+    "palette": {
+      "background": "#F5F2EB",
+      "foreground": "#141E50",
+      "primary": "#141E50",
+      "primary_foreground": "#F5F2EB",
+      "secondary": "#B42828",
+      "accent": "#F5D76E",
+      "wood_dark": "#2A1A12"
+    },
+    "usage_rules": "Theme is physical/analog. Backgrounds for UI panels (modals, scoreboards) MUST be parchment/paper colored (#F5F2EB). Text must replicate ballpoint pen ink (#141E50 for blue, #B42828 for red). Never use pure black or sterile grays. Shadows should be warm dark brown (#2A1A12) with varying opacity."
+  },
+  "visual_enhancers": {
+    "surfaces": "Diegetic UI: Menus and modals MUST look like notebook paper, index cards, or masking tape sitting on the desk. Apply heavy drop shadows, e.g., 'shadow-[4px_8px_16px_rgba(20,10,0,0.6)]' to lift paper off the wood background.",
+    "borders": "Avoid perfectly smooth borders. Use 2px solid '#141E50' to look drawn, or rely on actual paper textures. You can use CSS border-radius irregularities (e.g., 'rounded-[2px_255px_3px_255px]') to simulate hand-cut paper.",
+    "textures": "Overlay a subtle noise texture or use the provided ruled paper image for modals. Never use glassmorphism; it breaks the physical, tactile illusion."
+  },
+  "grids": {
+    "modes": "MODE A: Asymmetrical layout for the Main Menu to simulate papers casually tossed on a desk. Do not perfectly center-align everything; use subtle rotations (e.g., -rotate-1 or rotate-2).",
+    "gaps": "Use wide gaps (gap-8 to gap-12) to give the UI breathing room over the dense wood background."
+  },
+  "layouts": {
+    "spacing": "Generous spacing. Modals should be padded heavily (p-8 to p-12).",
+    "positioning": "HUD elements (Turn Indicator, Scoreboard) must be pinned to the screen corners (absolute positioning). They should look like taped notes attached to the desk surface. Mute button can look like a small pin or drawn icon in the top-right."
+  },
+  "component_rules": {
+    "MenuScreen": "A large 'notebook page' modal centered over the dark wood background. Include the game title in a massive, handwritten font. Buttons are bold, ink-styled text with hand-drawn box outlines.",
+    "Scoreboard": "Top-left absolute positioned panel. Styled like a ripped piece of masking tape or a sticky note. Displays 'Player 1 vs AI' score in Space Mono font.",
+    "PowerMeter": "Displayed during aiming. It should look like a physical plastic ruler or a hand-drawn ink bar that fills up next to the active pen.",
+    "Buttons": "No standard SaaS pill buttons. Use 'drawn' rectangles with heavy outlines. On hover, they should tilt slightly and scale up to mimic interacting with a physical piece of paper.",
+    "Modals": "MUST have solid non-transparent backgrounds (Paper color #F5F2EB). DO NOT use transparent backgrounds where content is under it."
+  },
+  "motion": {
+    "hover_states": "Interactive paper elements tilt slightly (e.g., hover:-rotate-2 or hover:rotate-2) and scale up (hover:scale-105). Text color can switch from blue ink to red ink.",
+    "entrance": "Modals slide down from the top with a slight spring/bounce (simulating dropping paper onto a desk). Use framer-motion if possible, or CSS keyframes.",
+    "transitions": "Use specific properties (e.g., 'transition-transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)'). NEVER use 'transition-all'."
+  },
+  "accessibility": {
+    "contrast": "Ensure ballpoint blue and red ink maintain at least 4.5:1 contrast against the paper background.",
+    "focus": "Focus states should mimic a bright yellow highlighter stroke behind the text (bg-[#F5D76E]).",
+    "testing": "All interactive and key informational elements MUST include a 'data-testid' attribute (e.g., data-testid='start-game-button', data-testid='mute-toggle', data-testid='player-score')."
+  },
+  "media": {
+    "image_urls": {
+      "desk_background": {
+        "url": "https://images.unsplash.com/photo-1576092762791-dd9e2220abd1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwxfHxkYXJrJTIwd29vZGVuJTIwZGVzayUyMHRleHR1cmUlMjBmbGF0JTIwbGF5fGVufDB8fHx8MTc4NzkyMjg0MXww&ixlib=rb-4.1.0&q=85",
+        "description": "Dark wooden desk texture to be used as the absolute background of the entire app/game viewport (`h-screen w-screen bg-cover bg-center`)."
+      },
+      "paper_texture": {
+        "url": "https://images.unsplash.com/photo-1695131020187-d3dcdab5016b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwxfHxydWxlZCUyMG5vdGVib29rJTIwcGFwZXIlMjB0ZXh0dXJlfGVufDB8fHx8MTc4NzkyMjg0MXww&ixlib=rb-4.1.0&q=85",
+        "description": "Ruled notebook paper texture to be used as a background image for the main menu modal and win/lose screens."
+      }
+    }
+  },
+  "physics_libraries": {
+    "recommendation": "Use Matter.js for the 2D physics engine (pens, table bounds, friction, collisions). Render the physics world onto an HTML5 `<canvas>` that sits beneath the React UI shell."
+  },
+  "instructions_to_main_agent": [
+    "You are building a React-based UI shell overlaying a 2D physics game.",
+    "Focus purely on implementing the HTML/Tailwind shell using `.js` files (not TSX).",
+    "Import Google Fonts 'Caveat' and 'Space Mono' in your index.css.",
+    "Use Phosphor icons or Lucide React for UI icons, styled to look like ink sketches.",
+    "Render modals and HUD elements as absolute positioned elements on top of the 'desk' background container.",
+    "The UI is Diegetic: Every panel, button, and text should look like a physical object (paper, tape, ink) placed on the desk.",
+    "Ensure the mute toggle and difficulty selector clearly indicate their state."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Do not converge toward generic 'AI slop' aesthetics. Avoid default centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy. Drop shadows on paper elements are crucial to separate them from the desk.",
+    "Do not use complete transparent backgrounds for overlays/modals.",
+    "Do not apply 'transition: all'. Apply specific transitions like 'transition: transform 0.2s ease, opacity 0.2s ease'.",
+    "Do not center align the app container (.App { text-align: center; }). Keep natural reading flows.",
+    "Never use AI assistant Emoji characters like \ud83e\udd16\ud83e\udde0\ud83d\udcad for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, entrance animations. Static = dead."
+  ]
+}

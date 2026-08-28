@@ -1,0 +1,46 @@
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Space+Mono:wght@400;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: 'Space Mono', monospace;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+}
+
+@layer base {
+  :root {
+    --background: 40 33% 94%;
+    --foreground: 230 60% 20%;
+    --card: 40 33% 94%;
+    --card-foreground: 230 60% 20%;
+    --popover: 40 33% 94%;
+    --popover-foreground: 230 60% 20%;
+    --primary: 230 60% 20%;
+    --primary-foreground: 40 33% 94%;
+    --secondary: 0 63% 43%;
+    --secondary-foreground: 40 33% 94%;
+    --muted: 40 20% 85%;
+    --muted-foreground: 230 30% 40%;
+    --accent: 46 86% 69%;
+    --accent-foreground: 230 60% 20%;
+    --destructive: 0 63% 43%;
+    --destructive-foreground: 40 33% 94%;
+    --border: 230 60% 20%;
+    --input: 230 60% 20%;
+    --ring: 46 86% 69%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
