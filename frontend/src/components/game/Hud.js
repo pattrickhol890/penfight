@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Volume2, VolumeX, LogOut, Globe, AlertTriangle, Maximize2, Minimize2 } from "lucide-react";
+import { Volume2, VolumeX, LogOut, Globe, AlertTriangle, Maximize2, Minimize2, Flame } from "lucide-react";
 
 export default function Hud({ scores, turn, turnState, mode, difficulty, muted, power, onToggleMute, onQuit, mp }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -31,27 +31,39 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
     }
   };
 
-  let label = "";
-  if (mode === "ai") {
-    label = turn === "p1" ? "Your turn" : "Computer thinking…";
-  } else if (mode === "online") {
-    const isMyTurn = turn === mp?.role;
-    label = isMyTurn ? "Your turn" : "Opponent's turn…";
-  } else {
-    label = turn === "p1" ? "Blue's turn" : "Red's turn";
-  }
+  const isP1Turn = turn === "p1";
+  const isP2Turn = turn === "p2";
 
-  const turnColor = turn === "p1" ? "#1E3A8A" : "#B42828";
   const p1Label = mode === "online" ? (mp?.role === "p1" ? "YOU" : "OPP") : mode === "ai" ? "YOU" : "YOU";
   const p2Label = mode === "online" ? (mp?.role === "p2" ? "YOU" : "OPP") : mode === "ai" ? "OPP" : "OPP";
 
+  const isMyTurn = mode === "online" ? turn === mp?.role : turn === "p1";
+
   return (
     <>
+      {/* ================= TOP LEFT - ROOM CODE / MODE BADGE ================= */}
+      <div className="fixed top-3 left-3 z-30 flex items-center gap-2 pointer-events-none">
+        {mode === "ai" && (
+          <div className="flex items-center gap-1 rounded-full bg-black/50 backdrop-blur-sm px-3 py-1 border border-white/20 text-white shadow-sm font-mono text-[10px] font-bold uppercase tracking-wider">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>AI: {difficulty}</span>
+          </div>
+        )}
+        {mode === "online" && mp?.roomCode && (
+          <div className="flex items-center gap-1.5 rounded-full bg-black/55 backdrop-blur-sm px-3 py-1 border border-white/25 text-white shadow-sm font-mono text-[10px] font-bold tracking-wider">
+            <Globe className="h-3 w-3 text-[#F5D76E]" />
+            <span>ROOM: {mp.roomCode}</span>
+          </div>
+        )}
+      </div>
+
       {/* ================= FAR LEFT EDGE BADGE (YOU / PLAYER 1) ================= */}
       <div
-        className="fixed left-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center justify-between rounded-r-3xl border-y-4 border-r-4 border-white py-5 px-2.5 sm:px-3 shadow-[4px_6px_20px_rgba(0,0,0,0.5)] transition-transform duration-200"
+        className={`fixed left-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center justify-between rounded-r-3xl border-y-4 border-r-4 border-white py-5 px-2.5 sm:px-3 shadow-[4px_6px_20px_rgba(0,0,0,0.5)] transition-all duration-300 ${
+          isP1Turn ? "scale-105 shadow-[0_0_24px_rgba(255,26,83,0.8)]" : "opacity-85"
+        }`}
         style={{
-          backgroundColor: "#FF1A53", // Vibrant Red/Pink Joy-Con style as in user mockup
+          backgroundColor: "#FF1A53",
           minHeight: "180px",
           width: "48px",
         }}
@@ -80,13 +92,39 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
             />
           ))}
         </div>
+
+        {/* ================= TURN SPEECH BUBBLE (BESIDE P1 SCORECARD) ================= */}
+        <AnimatePresence>
+          {isP1Turn && (
+            <motion.div
+              initial={{ opacity: 0, x: -12, scale: 0.9 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: -8, scale: 0.9 }}
+              transition={{ type: "spring", stiffness: 180, damping: 14 }}
+              className="absolute left-full ml-3 top-1/2 -translate-y-1/2 pointer-events-none z-40"
+            >
+              <div className="relative flex items-center gap-1.5 rounded-2xl border-2 border-[#141E50] bg-white px-3.5 py-1.5 shadow-[3px_5px_15px_rgba(0,0,0,0.4)] whitespace-nowrap">
+                {/* Pointer arrow pointing to the left card */}
+                <span className="absolute -left-2 top-1/2 -translate-y-1/2 border-y-6 border-y-transparent border-r-8 border-r-[#141E50]" />
+                <span className="absolute -left-[5px] top-1/2 -translate-y-1/2 border-y-4 border-y-transparent border-r-6 border-r-white z-10" />
+
+                <Flame className="h-4 w-4 text-[#FF1A53] animate-bounce" />
+                <span className="font-mono text-xs sm:text-sm font-extrabold uppercase tracking-wide text-[#141E50]">
+                  {turnState === "moving" ? "Rolling physics…" : isMyTurn ? "Your turn!" : "P1 turn"}
+                </span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* ================= FAR RIGHT EDGE BADGE (OPP / PLAYER 2) ================= */}
       <div
-        className="fixed right-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center justify-between rounded-l-3xl border-y-4 border-l-4 border-white py-5 px-2.5 sm:px-3 shadow-[-4px_6px_20px_rgba(0,0,0,0.5)] transition-transform duration-200"
+        className={`fixed right-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center justify-between rounded-l-3xl border-y-4 border-l-4 border-white py-5 px-2.5 sm:px-3 shadow-[-4px_6px_20px_rgba(0,0,0,0.5)] transition-all duration-300 ${
+          isP2Turn ? "scale-105 shadow-[0_0_24px_rgba(41,82,255,0.8)]" : "opacity-85"
+        }`}
         style={{
-          backgroundColor: "#2952FF", // Vibrant Blue Joy-Con style as in user mockup
+          backgroundColor: "#2952FF",
           minHeight: "180px",
           width: "48px",
         }}
@@ -114,36 +152,35 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
             />
           ))}
         </div>
-      </div>
 
-      {/* ================= TOP CENTER - TURN SPEECH BUBBLE ================= */}
-      <div className="fixed left-1/2 top-3 z-30 -translate-x-1/2 flex flex-col items-center gap-1 pointer-events-none">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={label}
-            initial={{ y: -18, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="rounded-2xl border-2 border-[#141E50] bg-white px-5 py-1.5 shadow-[2px_5px_14px_rgba(0,0,0,0.35)]"
-            data-testid="turn-indicator"
-          >
-            <span className="font-mono text-sm sm:text-base font-bold tracking-wide" style={{ color: turnColor }}>
-              {turnState === "moving" ? "Rolling physics…" : label}
-            </span>
-          </motion.div>
+        {/* ================= TURN SPEECH BUBBLE (BESIDE P2 SCORECARD) ================= */}
+        <AnimatePresence>
+          {isP2Turn && (
+            <motion.div
+              initial={{ opacity: 0, x: 12, scale: 0.9 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 8, scale: 0.9 }}
+              transition={{ type: "spring", stiffness: 180, damping: 14 }}
+              className="absolute right-full mr-3 top-1/2 -translate-y-1/2 pointer-events-none z-40"
+            >
+              <div className="relative flex items-center gap-1.5 rounded-2xl border-2 border-[#141E50] bg-white px-3.5 py-1.5 shadow-[3px_5px_15px_rgba(0,0,0,0.4)] whitespace-nowrap">
+                {/* Pointer arrow pointing to the right card */}
+                <span className="absolute -right-2 top-1/2 -translate-y-1/2 border-y-6 border-y-transparent border-l-8 border-l-[#141E50]" />
+                <span className="absolute -right-[5px] top-1/2 -translate-y-1/2 border-y-4 border-y-transparent border-l-6 border-l-white z-10" />
+
+                <span className="font-mono text-xs sm:text-sm font-extrabold uppercase tracking-wide text-[#141E50]">
+                  {turnState === "moving"
+                    ? "Rolling physics…"
+                    : mode === "ai"
+                    ? "Thinking…"
+                    : isMyTurn
+                    ? "Your turn!"
+                    : "Opponent's turn"}
+                </span>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
-
-        {mode === "ai" && (
-          <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-white/90 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
-            AI: {difficulty}
-          </span>
-        )}
-        {mode === "online" && mp?.roomCode && (
-          <div className="flex items-center gap-1 rounded-full bg-black/45 backdrop-blur-sm px-3 py-0.5 border border-white/30 text-white shadow-sm">
-            <Globe className="h-3 w-3 text-[#F5D76E]" />
-            <span className="font-mono text-[10px] font-bold tracking-wider">ROOM: {mp.roomCode}</span>
-          </div>
-        )}
       </div>
 
       {/* ================= OPPONENT DISCONNECTED BANNER ================= */}
