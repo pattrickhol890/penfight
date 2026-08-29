@@ -59,8 +59,8 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
 
   return (
     <>
-      {/* ================= TOP LEFT - ROOM CODE / MODE BADGE ================= */}
-      <div className="fixed top-2.5 left-3 z-30 flex items-center gap-2 pointer-events-none">
+      {/* ================= TOP LEFT - ROOM CODE / MODE BADGE & AIM SWITCH ================= */}
+      <div className="fixed top-2.5 left-3 z-30 flex flex-col items-start gap-1.5">
         {mode === "ai" && (
           <div className="flex items-center gap-1 rounded-full bg-black/50 backdrop-blur-sm px-3 py-1 border border-white/20 text-white shadow-sm font-mono text-[10px] font-bold uppercase tracking-wider">
             <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -73,6 +73,29 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
             <span>ROOM: {mp.roomCode}</span>
           </div>
         )}
+
+        {/* Aim Mode Toggle Switch - Placed cleanly in top-left wood space, 0% overlap with table */}
+        <button
+          onClick={handleAimToggle}
+          title={
+            aimMode === "forward"
+              ? "Aim Mode: Drag Forward (Tap for Slingshot)"
+              : "Aim Mode: Slingshot Pull-Back (Tap for Forward Drag)"
+          }
+          className="flex items-center gap-1.5 rounded-full bg-[#F5F2EB] px-2.5 py-1 text-[#141E50] border border-[#141E50]/20 shadow-[1px_3px_8px_rgba(0,0,0,0.4)] transition-transform duration-150 hover:scale-105 active:scale-95 font-mono text-[10px] font-bold uppercase tracking-wider"
+        >
+          {aimMode === "forward" ? (
+            <>
+              <MoveUpRight className="h-3.5 w-3.5 text-emerald-600" />
+              <span>AIM: FORWARD</span>
+            </>
+          ) : (
+            <>
+              <ArrowDownLeft className="h-3.5 w-3.5 text-amber-600" />
+              <span>AIM: SLINGSHOT</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* ================= FAR LEFT EDGE BADGE (YOU / PLAYER 1) ================= */}
@@ -210,10 +233,10 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
       <AnimatePresence>
         {toast && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="fixed top-12 right-3 z-30 flex items-center gap-1.5 rounded-lg bg-black/80 px-3 py-1.5 text-white font-mono text-xs shadow-xl border border-white/20 pointer-events-none"
+            exit={{ opacity: 0, y: -8 }}
+            className="fixed top-20 left-3 z-30 flex items-center gap-1.5 rounded-lg bg-black/85 px-3 py-1.5 text-white font-mono text-xs shadow-xl border border-white/20 pointer-events-none"
           >
             {aimMode === "forward" ? <MoveUpRight className="h-3.5 w-3.5 text-emerald-400" /> : <ArrowDownLeft className="h-3.5 w-3.5 text-amber-400" />}
             <span>{toast}</span>
@@ -229,27 +252,8 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
         </div>
       )}
 
-      {/* ================= TOP RIGHT CONTROLS (FAR AWAY FROM CANVAS) ================= */}
+      {/* ================= TOP RIGHT CONTROLS (0% OVERLAP WITH TABLE) ================= */}
       <div className="fixed top-2.5 right-3 z-30 flex items-center gap-2">
-        {/* Aim Mode Toggle Switch */}
-        <button
-          onClick={handleAimToggle}
-          title={aimMode === "forward" ? "Mode: Drag Forward (Tap to switch to Slingshot)" : "Mode: Slingshot Pull-Back (Tap to switch to Forward Drag)"}
-          className="flex items-center gap-1.5 rounded-full bg-[#F5F2EB] px-2.5 py-1 text-[#141E50] border border-[#141E50]/20 shadow-[1px_3px_8px_rgba(0,0,0,0.4)] transition-transform duration-150 hover:scale-105 active:scale-95 font-mono text-[10px] font-bold uppercase tracking-wider"
-        >
-          {aimMode === "forward" ? (
-            <>
-              <MoveUpRight className="h-3.5 w-3.5 text-emerald-600" />
-              <span>Forward</span>
-            </>
-          ) : (
-            <>
-              <ArrowDownLeft className="h-3.5 w-3.5 text-amber-600" />
-              <span>Slingshot</span>
-            </>
-          )}
-        </button>
-
         <button
           onClick={toggleFullscreen}
           title="Toggle Fullscreen"
