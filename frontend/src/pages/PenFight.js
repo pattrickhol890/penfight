@@ -484,8 +484,8 @@ export default function PenFight() {
     const spacing = BOARD.w / (n + 1);
     for (let i = 0; i < n; i++) {
       const x = BOARD.x + spacing * (i + 1);
-      pens.push(makePen(x, BOARD.y + BOARD.h - 72, "p1", `p1_pen_${i}`));
-      pens.push(makePen(x, BOARD.y + 72, "p2", `p2_pen_${i}`));
+      pens.push(makePen(x, BOARD.y + BOARD.h - 80, "p1", `p1_pen_${i}`));
+      pens.push(makePen(x, BOARD.y + 80, "p2", `p2_pen_${i}`));
     }
     World.add(engine.world, pens);
     Object.assign(st, {
@@ -545,8 +545,8 @@ export default function PenFight() {
       <div className="absolute inset-0 bg-[#1a0f08]/45" />
 
       {/* Game canvas */}
-      <div className="absolute inset-0 flex items-center justify-center p-1 sm:p-3">
-        <div ref={wrapperRef} className="relative w-full max-w-[min(98vw,calc(96vh*1.5))] aspect-[3/2]">
+      <div className="absolute inset-0 flex items-center justify-center p-0.5 sm:p-2">
+        <div ref={wrapperRef} className="relative w-full max-w-[min(99vw,calc(98vh*1.5))] aspect-[3/2]">
           <canvas
             ref={canvasRef}
             width={CFG.W}

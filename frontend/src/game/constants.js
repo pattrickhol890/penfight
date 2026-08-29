@@ -2,11 +2,11 @@
 export const CFG = {
   W: 900,
   H: 600,
-  penLen: 78,
-  penW: 13,
+  penLen: 96,
+  penW: 17,
   pensPerSide: 4,
-  maxDrag: 150,
-  maxSpeed: 20,
+  maxDrag: 160,
+  maxSpeed: 21,
   frictionAir: 0.045,
   restThreshold: 0.12,
   maxMovingMs: 6500,
@@ -16,8 +16,8 @@ export const CFG = {
   zoomMin: 0.82,
 };
 
-// The playable table surface. Outside this rect = pen fell off the table.
-export const BOARD = { x: 70, y: 60, w: 760, h: 480 };
+// The playable table surface. Expands to ~90% of screen with thin desk margin
+export const BOARD = { x: 35, y: 30, w: 830, h: 540 };
 
 export const INK = {
   p1: "#1E3A8A", // blue player
