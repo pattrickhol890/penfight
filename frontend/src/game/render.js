@@ -111,8 +111,8 @@ export function drawAim(ctx, aiming) {
   const mag = Math.min(CFG.maxDrag, Math.hypot(dv.x, dv.y));
   if (mag < 4) return;
   const dir = { x: dv.x / (mag || 1), y: dv.y / (mag || 1) };
-  const ratio = mag / CFG.maxDrag;
-  const len = 40 + ratio * 150;
+  const ratio = Math.min(1, mag / (isForward ? 90 : CFG.maxDrag));
+  const len = isForward ? 25 + ratio * 65 : 40 + ratio * 150;
   const ex = strike.x + dir.x * len;
   const ey = strike.y + dir.y * len;
 
@@ -132,18 +132,16 @@ export function drawAim(ctx, aiming) {
     line(ctx, strike.x, strike.y, aiming.current.x, aiming.current.y);
     ctx.setLineDash([]);
   } else {
-    // forward drag guide (dashed track towards target)
-    ctx.strokeStyle = "rgba(245,215,110,0.6)";
-    ctx.setLineDash([4, 6]);
-    ctx.lineWidth = 2;
-    line(ctx, strike.x, strike.y, ex, ey);
-    ctx.setLineDash([]);
+    // forward swipe trail (energetic short flick cue)
+    ctx.strokeStyle = "rgba(255,255,255,0.45)";
+    ctx.lineWidth = 3;
+    line(ctx, strike.x, strike.y, aiming.current.x, aiming.current.y);
   }
 
   // launch arrow from the strike point
-  const col = ratio > 0.7 ? "#B42828" : "#F5D76E";
+  const col = ratio > 0.7 ? "#FF1A53" : "#F5D76E";
   ctx.strokeStyle = col;
-  ctx.lineWidth = 4;
+  ctx.lineWidth = isForward ? 5 : 4;
   line(ctx, strike.x, strike.y, ex, ey);
   const a = Math.atan2(dir.y, dir.x);
   ctx.beginPath();
