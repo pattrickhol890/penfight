@@ -67,30 +67,34 @@ export function drawPen(ctx, pen) {
   ctx.fill();
   ctx.shadowColor = "transparent";
 
-  // metallic tip (points toward -y after rotate: at one end)
+  // metallic tip (points forward at front end)
   ctx.beginPath();
-  ctx.moveTo(L / 2, -W / 2 + 1);
-  ctx.lineTo(L / 2 + 10, 0);
-  ctx.lineTo(L / 2, W / 2 - 1);
+  ctx.moveTo(L / 2, -W / 2 + 0.5);
+  ctx.lineTo(L / 2 + 12, 0);
+  ctx.lineTo(L / 2, W / 2 - 0.5);
   ctx.closePath();
-  ctx.fillStyle = "#9aa0a6";
+  ctx.fillStyle = "#A8ADB5";
   ctx.fill();
+
+  // metallic ball nib
   ctx.beginPath();
-  ctx.arc(L / 2 + 10, 0, 1.6, 0, Math.PI * 2);
-  ctx.fillStyle = "#4b4f55";
+  ctx.arc(L / 2 + 12, 0, 1.2, 0, Math.PI * 2);
+  ctx.fillStyle = "#333842";
   ctx.fill();
 
   // grip band
-  ctx.fillStyle = "rgba(0,0,0,0.25)";
-  roundRect(ctx, L / 2 - 22, -W / 2, 10, W, 2);
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  roundRect(ctx, L / 2 - 28, -W / 2, 14, W, 2);
   ctx.fill();
 
   // cap / clip
-  ctx.fillStyle = shade(color, -20);
-  roundRect(ctx, -L / 2 - 4, -W / 2, 8, W, 3);
+  ctx.fillStyle = shade(color, -25);
+  roundRect(ctx, -L / 2 - 3, -W / 2, 8, W, 2.5);
   ctx.fill();
-  ctx.fillStyle = "#d9d2c2";
-  roundRect(ctx, -L / 2 + 4, -W / 2 - 3, 3, W + 6, 2);
+
+  // chrome clip
+  ctx.fillStyle = "#E2DDD2";
+  roundRect(ctx, -L / 2 + 5, -W / 2 - 2, 2.5, W + 4, 1.5);
   ctx.fill();
 
   ctx.restore();

@@ -484,8 +484,8 @@ export default function PenFight() {
     const spacing = BOARD.w / (n + 1);
     for (let i = 0; i < n; i++) {
       const x = BOARD.x + spacing * (i + 1);
-      pens.push(makePen(x, BOARD.y + BOARD.h - 80, "p1", `p1_pen_${i}`));
-      pens.push(makePen(x, BOARD.y + 80, "p2", `p2_pen_${i}`));
+      pens.push(makePen(x, BOARD.y + BOARD.h - 85, "p1", `p1_pen_${i}`));
+      pens.push(makePen(x, BOARD.y + 85, "p2", `p2_pen_${i}`));
     }
     World.add(engine.world, pens);
     Object.assign(st, {

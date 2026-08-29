@@ -1,9 +1,8 @@
-// Core game configuration (logical canvas units)
 export const CFG = {
   W: 900,
   H: 600,
-  penLen: 96,
-  penW: 17,
+  penLen: 106,
+  penW: 12.5,
   pensPerSide: 4,
   maxDrag: 160,
   maxSpeed: 21,
