@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Volume2, VolumeX, LogOut, Globe, AlertTriangle, Maximize2, Minimize2, Flame } from "lucide-react";
+import { Volume2, VolumeX, LogOut, Globe, AlertTriangle, Maximize2, Minimize2, Flame, MoveUpRight, ArrowDownLeft } from "lucide-react";
 
-export default function Hud({ scores, turn, turnState, mode, difficulty, muted, power, onToggleMute, onQuit, mp }) {
+export default function Hud({ scores, turn, turnState, mode, difficulty, muted, power, aimMode, onToggleAimMode, onToggleMute, onQuit, mp }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     const handleFsChange = () => {
@@ -29,6 +30,13 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
     } catch (err) {
       console.warn(err);
     }
+  };
+
+  const handleAimToggle = () => {
+    onToggleAimMode();
+    const nextMode = aimMode === "slingshot" ? "Drag Forward (Direct)" : "Slingshot (Pull Back)";
+    setToast(`Aim: ${nextMode}`);
+    setTimeout(() => setToast(null), 2000);
   };
 
   const isP1Turn = turn === "p1";
@@ -198,6 +206,21 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
         </AnimatePresence>
       </div>
 
+      {/* ================= TOAST NOTIFICATION FOR AIM SWITCH ================= */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="fixed top-12 right-3 z-30 flex items-center gap-1.5 rounded-lg bg-black/80 px-3 py-1.5 text-white font-mono text-xs shadow-xl border border-white/20 pointer-events-none"
+          >
+            {aimMode === "forward" ? <MoveUpRight className="h-3.5 w-3.5 text-emerald-400" /> : <ArrowDownLeft className="h-3.5 w-3.5 text-amber-400" />}
+            <span>{toast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ================= OPPONENT DISCONNECTED BANNER ================= */}
       {mode === "online" && mp?.opponentLeft && (
         <div className="fixed top-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-xl bg-amber-100 border-2 border-amber-500 px-4 py-2 text-amber-950 font-mono text-xs shadow-xl">
@@ -206,8 +229,27 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
         </div>
       )}
 
-      {/* ================= TOP RIGHT CONTROLS ================= */}
-      <div className="fixed top-2.5 right-3 z-30 flex gap-2">
+      {/* ================= TOP RIGHT CONTROLS (FAR AWAY FROM CANVAS) ================= */}
+      <div className="fixed top-2.5 right-3 z-30 flex items-center gap-2">
+        {/* Aim Mode Toggle Switch */}
+        <button
+          onClick={handleAimToggle}
+          title={aimMode === "forward" ? "Mode: Drag Forward (Tap to switch to Slingshot)" : "Mode: Slingshot Pull-Back (Tap to switch to Forward Drag)"}
+          className="flex items-center gap-1.5 rounded-full bg-[#F5F2EB] px-2.5 py-1 text-[#141E50] border border-[#141E50]/20 shadow-[1px_3px_8px_rgba(0,0,0,0.4)] transition-transform duration-150 hover:scale-105 active:scale-95 font-mono text-[10px] font-bold uppercase tracking-wider"
+        >
+          {aimMode === "forward" ? (
+            <>
+              <MoveUpRight className="h-3.5 w-3.5 text-emerald-600" />
+              <span>Forward</span>
+            </>
+          ) : (
+            <>
+              <ArrowDownLeft className="h-3.5 w-3.5 text-amber-600" />
+              <span>Slingshot</span>
+            </>
+          )}
+        </button>
+
         <button
           onClick={toggleFullscreen}
           title="Toggle Fullscreen"

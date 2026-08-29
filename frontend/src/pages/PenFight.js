@@ -49,6 +49,7 @@ export default function PenFight() {
     mode: "ai",
     difficulty: "medium",
     aiming: null,
+    aimMode: localStorage.getItem("pf_aim_mode") || "forward",
     moveStart: 0,
     startTime: 0,
   });
@@ -59,9 +60,19 @@ export default function PenFight() {
   const [scores, setScores] = useState({ p1: CFG.pensPerSide, p2: CFG.pensPerSide });
   const [power, setPower] = useState(0);
   const [muted, setMuted] = useState(false);
+  const [aimMode, setAimMode] = useState(() => localStorage.getItem("pf_aim_mode") || "forward");
   const [mode, setMode] = useState("ai");
   const [difficulty, setDifficulty] = useState("medium");
   const [winner, setWinner] = useState(null);
+
+  const toggleAimMode = () => {
+    setAimMode((prev) => {
+      const next = prev === "slingshot" ? "forward" : "slingshot";
+      localStorage.setItem("pf_aim_mode", next);
+      g.current.aimMode = next;
+      return next;
+    });
+  };
 
   // Auto-start online match when opponent joins
   useEffect(() => {
@@ -324,6 +335,7 @@ export default function PenFight() {
             pen: oppPen,
             start: oppAim.start,
             current: oppAim.current,
+            aimMode: oppAim.aimMode || "forward",
           });
         }
       }
@@ -371,7 +383,14 @@ export default function PenFight() {
       const r = wrap.getBoundingClientRect();
       const cx = e.touches ? e.touches[0].clientX : e.clientX;
       const cy = e.touches ? e.touches[0].clientY : e.clientY;
-      st.aiming = { pen: hit, start: pt, current: pt, startClient: { x: cx, y: cy }, baseScale: CFG.W / r.width };
+      st.aiming = {
+        pen: hit,
+        start: pt,
+        current: pt,
+        startClient: { x: cx, y: cy },
+        baseScale: CFG.W / r.width,
+        aimMode: st.aimMode || "forward",
+      };
       sound.play("grab");
       e.preventDefault();
     };
@@ -400,6 +419,7 @@ export default function PenFight() {
           penId: st.aiming.pen.penData.id,
           start: st.aiming.start,
           current: st.aiming.current,
+          aimMode: st.aiming.aimMode,
         });
       }
       e.preventDefault();
@@ -410,7 +430,10 @@ export default function PenFight() {
       if (!st.aiming) return;
       const pen = st.aiming.pen;
       const grab = st.aiming.start;
-      const dv = { x: grab.x - st.aiming.current.x, y: grab.y - st.aiming.current.y };
+      const isForward = st.aiming.aimMode === "forward";
+      const dv = isForward
+        ? { x: st.aiming.current.x - grab.x, y: st.aiming.current.y - grab.y }
+        : { x: grab.x - st.aiming.current.x, y: grab.y - st.aiming.current.y };
       const rawMag = Math.hypot(dv.x, dv.y);
       st.aiming = null;
       setPower(0);
@@ -420,7 +443,7 @@ export default function PenFight() {
         mpRef.current.sendAim(null);
       }
 
-      if (rawMag < 10) return;
+      if (rawMag < 8) return;
       const mag = Math.min(CFG.maxDrag, rawMag);
       const ratio = mag / CFG.maxDrag;
       const dir = { x: dv.x / rawMag, y: dv.y / rawMag };
@@ -569,6 +592,8 @@ export default function PenFight() {
               difficulty={difficulty}
               muted={muted}
               power={power}
+              aimMode={aimMode}
+              onToggleAimMode={toggleAimMode}
               onToggleMute={toggleMute}
               onQuit={quitToMenu}
               mp={mp}
@@ -577,7 +602,16 @@ export default function PenFight() {
         </div>
       </div>
 
-      {phase === "menu" && <MainMenu onStart={startGame} muted={muted} onToggleMute={toggleMute} mp={mp} />}
+      {phase === "menu" && (
+        <MainMenu
+          onStart={startGame}
+          muted={muted}
+          onToggleMute={toggleMute}
+          aimMode={aimMode}
+          onToggleAimMode={toggleAimMode}
+          mp={mp}
+        />
+      )}
       {phase === "gameover" && (
         <GameOverModal
           winner={winner}

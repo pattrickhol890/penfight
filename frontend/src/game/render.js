@@ -103,7 +103,11 @@ export function drawPen(ctx, pen) {
 export function drawAim(ctx, aiming) {
   const pen = aiming.pen;
   const strike = aiming.start;
-  const dv = { x: pen.position.x - aiming.current.x, y: pen.position.y - aiming.current.y };
+  const isForward = aiming.aimMode === "forward";
+  const dv = isForward
+    ? { x: aiming.current.x - strike.x, y: aiming.current.y - strike.y }
+    : { x: pen.position.x - aiming.current.x, y: pen.position.y - aiming.current.y };
+
   const mag = Math.min(CFG.maxDrag, Math.hypot(dv.x, dv.y));
   if (mag < 4) return;
   const dir = { x: dv.x / (mag || 1), y: dv.y / (mag || 1) };
@@ -114,18 +118,27 @@ export function drawAim(ctx, aiming) {
 
   ctx.save();
   // selected pen ring
-  ctx.strokeStyle = "rgba(245,215,110,0.9)";
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(245,215,110,0.95)";
+  ctx.lineWidth = 2.5;
   ctx.beginPath();
   ctx.arc(pen.position.x, pen.position.y, CFG.penLen / 2 + 6, 0, Math.PI * 2);
   ctx.stroke();
 
-  // pull-back guide (from the strike point)
-  ctx.strokeStyle = "rgba(245,215,110,0.5)";
-  ctx.setLineDash([6, 8]);
-  ctx.lineWidth = 2;
-  line(ctx, strike.x, strike.y, aiming.current.x, aiming.current.y);
-  ctx.setLineDash([]);
+  if (!isForward) {
+    // pull-back guide (from the strike point to finger)
+    ctx.strokeStyle = "rgba(245,215,110,0.5)";
+    ctx.setLineDash([6, 8]);
+    ctx.lineWidth = 2;
+    line(ctx, strike.x, strike.y, aiming.current.x, aiming.current.y);
+    ctx.setLineDash([]);
+  } else {
+    // forward drag guide (dashed track towards target)
+    ctx.strokeStyle = "rgba(245,215,110,0.6)";
+    ctx.setLineDash([4, 6]);
+    ctx.lineWidth = 2;
+    line(ctx, strike.x, strike.y, ex, ey);
+    ctx.setLineDash([]);
+  }
 
   // launch arrow from the strike point
   const col = ratio > 0.7 ? "#B42828" : "#F5D76E";
