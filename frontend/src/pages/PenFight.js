@@ -402,24 +402,16 @@ export default function PenFight() {
       if (!st.aiming) return;
       const cx = e.touches ? e.touches[0].clientX : e.clientX;
       const cy = e.touches ? e.touches[0].clientY : e.clientY;
-      const now = performance.now();
       const bs = st.aiming.baseScale;
       const logdx = (cx - st.aiming.startClient.x) * bs;
       const logdy = (cy - st.aiming.startClient.y) * bs;
       const rawMag = Math.hypot(logdx, logdy);
       const isForward = st.aiming.aimMode === "forward";
-      const maxDistance = isForward ? 90 : CFG.maxDrag;
+      const maxDistance = isForward ? 110 : CFG.maxDrag;
       const cap = Math.min(rawMag, maxDistance);
       const nx = rawMag > 0 ? logdx / rawMag : 0;
       const ny = rawMag > 0 ? logdy / rawMag : 0;
       st.aiming.current = { x: st.aiming.start.x + nx * cap, y: st.aiming.start.y + ny * cap };
-
-      // Track swipe velocity samples
-      st.aiming.samples.push({ x: cx, y: cy, t: now });
-      if (st.aiming.samples.length > 8) {
-        st.aiming.samples.shift();
-      }
-      st.aiming.samples = st.aiming.samples.filter((s) => now - s.t < 140);
 
       const powerRatio = cap / maxDistance;
       setPower(powerRatio);
@@ -444,54 +436,15 @@ export default function PenFight() {
       const pen = st.aiming.pen;
       const grab = st.aiming.start;
       const isForward = st.aiming.aimMode === "forward";
-      const now = performance.now();
-      const samples = st.aiming.samples || [];
 
-      let dv = { x: 0, y: 0 };
-      let ratio = 0;
+      // In forward mode: drag forward from strike point
+      // In slingshot mode: pull backwards from strike point
+      const dv = isForward
+        ? { x: st.aiming.current.x - grab.x, y: st.aiming.current.y - grab.y }
+        : { x: grab.x - st.aiming.current.x, y: grab.y - st.aiming.current.y };
 
-      if (isForward) {
-        // Authentic real-time finger flick velocity
-        const s0 = samples[0] || { x: st.aiming.startClient.x, y: st.aiming.startClient.y, t: now - 30 };
-        const s1 = samples[samples.length - 1] || s0;
-        const dt = Math.max(16, s1.t - s0.t);
-        const dxClient = s1.x - s0.x;
-        const dyClient = s1.y - s0.y;
-        const clientDist = Math.hypot(dxClient, dyClient);
-        const swipeSpeedPxPerMs = clientDist / dt;
-
-        // Logic displacement
-        const logDx = st.aiming.current.x - grab.x;
-        const logDy = st.aiming.current.y - grab.y;
-        const logDist = Math.hypot(logDx, logDy);
-
-        if (logDist < 6 && clientDist < 5) {
-          st.aiming = null;
-          setPower(0);
-          setZoom(1);
-          if (st.mode === "online") mpRef.current.sendAim(null);
-          return;
-        }
-
-        // Combine speed and gesture travel: faster flick = harder hit!
-        const speedRatio = Math.min(1.0, Math.max(0.15, swipeSpeedPxPerMs / 1.35));
-        const travelRatio = Math.min(1.0, logDist / 75);
-        ratio = Math.min(1.0, Math.max(speedRatio, travelRatio));
-        dv = { x: logDx, y: logDy };
-      } else {
-        // Classic Slingshot pull-back
-        dv = { x: grab.x - st.aiming.current.x, y: grab.y - st.aiming.current.y };
-        const rawMag = Math.hypot(dv.x, dv.y);
-        if (rawMag < 8) {
-          st.aiming = null;
-          setPower(0);
-          setZoom(1);
-          if (st.mode === "online") mpRef.current.sendAim(null);
-          return;
-        }
-        const mag = Math.min(CFG.maxDrag, rawMag);
-        ratio = mag / CFG.maxDrag;
-      }
+      const rawMag = Math.hypot(dv.x, dv.y);
+      const maxDist = isForward ? 110 : CFG.maxDrag;
 
       st.aiming = null;
       setPower(0);
@@ -501,9 +454,10 @@ export default function PenFight() {
         mpRef.current.sendAim(null);
       }
 
-      const rawMag = Math.hypot(dv.x, dv.y);
-      if (rawMag < 3) return;
+      if (rawMag < 6) return;
 
+      const mag = Math.min(maxDist, rawMag);
+      const ratio = mag / maxDist;
       const dir = { x: dv.x / rawMag, y: dv.y / rawMag };
       const speed = ratio * CFG.maxSpeed;
       const v = { x: dir.x * speed, y: dir.y * speed };
