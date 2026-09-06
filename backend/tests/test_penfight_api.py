@@ -81,3 +81,61 @@ def test_create_match_local(api):
 def test_create_match_validation(api):
     r = api.post(f"{BASE_URL}/api/matches", json={"mode": "ai"})
     assert r.status_code == 422
+
+
+def test_auth_profile_flow(api):
+    # 1. Create Profile
+    demo_payload = {
+        "demo_name": "Classroom Champ",
+        "demo_email": f"champ_{os.urandom(4).hex()}@school.edu",
+    }
+    r = api.post(f"{BASE_URL}/api/auth/google", json=demo_payload)
+    if r.status_code == 200:
+        data = r.json()
+        token = data.get("token")
+        user = data.get("user")
+        assert token and user
+        assert user["subscription_tier"] == "free"
+        assert user["subscription_status"] == "active"
+        assert "gamer_tag" in user
+        user_id = user["id"]
+
+        # 2. Get Me
+        headers = {"Authorization": f"Bearer {token}"}
+        r_me = api.get(f"{BASE_URL}/api/auth/me", headers=headers)
+        assert r_me.status_code == 200
+        assert r_me.json()["id"] == user_id
+
+        # 3. Update Profile
+        upd = {"gamer_tag": "DeskLegend_77", "favorite_ink": "p2", "aim_mode": "slingshot"}
+        r_upd = api.put(f"{BASE_URL}/api/auth/profile", json=upd, headers=headers)
+        assert r_upd.status_code == 200
+        assert r_upd.json()["gamer_tag"] == "DeskLegend_77"
+        assert r_upd.json()["preferences"]["favorite_ink"] == "p2"
+
+        # 4. Link Match Result to User
+        match_payload = {
+            "mode": "ai",
+            "difficulty": "medium",
+            "winner": "p1",
+            "p1_pens_left": 2,
+            "p2_pens_left": 0,
+            "duration_sec": 35,
+            "user_id": user_id,
+        }
+        r_match = api.post(f"{BASE_URL}/api/matches", json=match_payload, headers=headers)
+        assert r_match.status_code == 200
+
+        # Check updated user stats
+        r_me2 = api.get(f"{BASE_URL}/api/auth/me", headers=headers)
+        assert r_me2.status_code == 200
+        stats = r_me2.json()["stats"]
+        assert stats["games_played"] >= 1
+        assert stats["wins"] >= 1
+
+        # 5. Logout
+        r_out = api.post(f"{BASE_URL}/api/auth/logout", headers=headers)
+        assert r_out.status_code == 200
+        r_me3 = api.get(f"{BASE_URL}/api/auth/me", headers=headers)
+        assert r_me3.status_code == 401
+

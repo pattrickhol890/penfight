@@ -11,6 +11,7 @@ import GameOverModal from "../components/game/GameOverModal";
 import RotateOverlay from "../components/game/RotateOverlay";
 import TableJoystick from "../components/game/TableJoystick";
 import { useMultiplayer } from "../hooks/useMultiplayer";
+import { useAuth } from "../context/AuthContext";
 import {
   isMobileDevice,
   isPortraitMode,
@@ -84,6 +85,7 @@ export default function PenFight() {
   const wrapperRef = useRef(null);
   const mp = useMultiplayer();
   const mpRef = useRef(mp);
+  const { user, token, refreshProfile } = useAuth();
   useEffect(() => {
     mpRef.current = mp;
   }, [mp]);
@@ -313,8 +315,15 @@ export default function PenFight() {
       p1_pens_left: st.pens.filter((p) => p.penData.owner === "p1").length,
       p2_pens_left: st.pens.filter((p) => p.penData.owner === "p2").length,
       duration_sec: Math.round((Date.now() - st.startTime) / 1000),
+      user_id: user?.id,
     };
-    axios.post(`${API}/matches`, body).catch(() => {});
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    axios
+      .post(`${API}/matches`, body, { headers })
+      .then(() => {
+        if (token) refreshProfile();
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {

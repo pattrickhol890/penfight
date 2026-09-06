@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { Volume2, VolumeX, User, Users, Cpu, Globe, Copy, Check, Loader2, ArrowLeft } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
+import ProfileModal from "./ProfileModal";
+import GoogleAuthModal from "./GoogleAuthModal";
 
 const paper =
   "https://images.unsplash.com/photo-1695131020187-d3dcdab5016b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwxfHxydWxlZCUyMG5vdGVib29rJTIwcGFwZXIlMjB0ZXh0dXJlfGVufDB8fHx8MTc4NzkyMjg0MXww&ixlib=rb-4.1.0&q=85";
@@ -40,11 +43,14 @@ const Diff = ({ v, cur, set }) => (
 );
 
 export default function MainMenu({ onStart, muted, onToggleMute, mp }) {
+  const { user } = useAuth();
   const [mode, setMode] = useState("ai");
   const [difficulty, setDifficulty] = useState("medium");
   const [joinCode, setJoinCode] = useState("");
   const [copied, setCopied] = useState(false);
   const [onlineTab, setOnlineTab] = useState("create"); // 'create' | 'join'
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
 
   const handleCopy = (code) => {
     if (!code) return;
@@ -70,15 +76,48 @@ export default function MainMenu({ onStart, muted, onToggleMute, mp }) {
         }}
         data-testid="main-menu"
       >
-        <button
-          onClick={onToggleMute}
-          data-testid="menu-mute-toggle"
-          className="absolute right-4 top-4 text-[#141E50] transition-transform duration-200 hover:scale-110"
-        >
-          {muted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
-        </button>
+        <div className="flex items-center justify-between mb-1">
+          <p className="font-mono text-xs font-bold uppercase tracking-[0.3em] text-[#B42828]">desk classics</p>
+          <div className="flex items-center gap-2">
+            {user ? (
+              <button
+                onClick={() => setProfileOpen(true)}
+                className="flex items-center gap-1.5 rounded-full border border-[#141E50]/30 bg-white/80 py-0.5 pl-1 pr-2.5 shadow-sm hover:bg-white transition-transform active:scale-95"
+                title="View Profile & Stats"
+              >
+                <img
+                  src={user.picture || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.name}`}
+                  alt={user.gamer_tag}
+                  className="w-5 h-5 rounded-full border border-[#141E50]/50 object-cover"
+                />
+                <span className="font-mono text-xs font-bold text-[#141E50] max-w-[90px] truncate">
+                  {user.gamer_tag}
+                </span>
+                <span className="rounded bg-[#8C6A48]/20 px-1 py-0.2 text-[9px] font-mono font-bold text-[#8C6A48] uppercase">
+                  {user.subscription_tier || "FREE"}
+                </span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setAuthOpen(true)}
+                className="flex items-center gap-1.5 rounded-full border-2 border-[#141E50] bg-[#F5D76E] px-2.5 py-1 shadow-sm hover:bg-[#F5D76E]/85 transition-transform active:scale-95"
+                title="Create Profile or Sign In"
+              >
+                <User className="h-3.5 w-3.5 text-[#141E50]" />
+                <span className="font-mono text-xs font-bold text-[#141E50]">Sign In</span>
+              </button>
+            )}
 
-        <p className="font-mono text-xs font-bold uppercase tracking-[0.3em] text-[#B42828]">desk classics</p>
+            <button
+              onClick={onToggleMute}
+              data-testid="menu-mute-toggle"
+              className="text-[#141E50] transition-transform duration-200 hover:scale-110 p-1"
+            >
+              {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+            </button>
+          </div>
+        </div>
+
         <h1 style={{ fontFamily: "'Caveat', cursive", color: "#141E50" }} className="text-5xl sm:text-6xl font-bold leading-none">
           Pen Fight
         </h1>
@@ -239,6 +278,9 @@ export default function MainMenu({ onStart, muted, onToggleMute, mp }) {
           <User className="h-3.5 w-3.5" /> Drag back on your pen &amp; release to flick.
         </p>
       </motion.div>
+
+      <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
+      <GoogleAuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
     </div>
   );
 }

@@ -1,8 +1,10 @@
-from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Header, HTTPException
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import requests
+
 import logging
 import random
 import string
@@ -37,6 +39,50 @@ class StatusCheckCreate(BaseModel):
     client_name: str
 
 
+class UserPreferences(BaseModel):
+    favorite_ink: str = "p1"  # 'p1' (blue) or 'p2' (red)
+    aim_mode: str = "forward"  # 'forward' or 'slingshot'
+
+
+class UserStats(BaseModel):
+    games_played: int = 0
+    wins: int = 0
+    losses: int = 0
+    win_streak: int = 0
+    best_win_streak: int = 0
+
+
+class UserProfile(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    google_id: Optional[str] = None
+    email: str
+    name: str
+    gamer_tag: str
+    picture: Optional[str] = None
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    last_login_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    # Forward-compatible subscription fields ready for payment integration
+    subscription_tier: str = "free"  # 'free' | 'pro' | 'supporter'
+    subscription_status: str = "active"  # 'active' | 'inactive' | 'trial'
+    subscription_expires_at: Optional[str] = None
+    stats: UserStats = Field(default_factory=UserStats)
+    preferences: UserPreferences = Field(default_factory=UserPreferences)
+
+
+class GoogleAuthPayload(BaseModel):
+    credential: Optional[str] = None
+    demo_email: Optional[str] = None
+    demo_name: Optional[str] = None
+    demo_picture: Optional[str] = None
+
+
+class ProfileUpdatePayload(BaseModel):
+    gamer_tag: Optional[str] = None
+    favorite_ink: Optional[str] = None
+    aim_mode: Optional[str] = None
+
+
 class MatchCreate(BaseModel):
     mode: str  # 'ai' | 'local' | 'online'
     difficulty: Optional[str] = None
@@ -44,6 +90,7 @@ class MatchCreate(BaseModel):
     p1_pens_left: int = 0
     p2_pens_left: int = 0
     duration_sec: int = 0
+    user_id: Optional[str] = None
 
 
 class Match(MatchCreate):
@@ -158,11 +205,176 @@ async def get_status_checks():
     return status_checks
 
 
+# ---------- Auth Helper ----------
+async def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.split(" ")[1].strip()
+    if db is None:
+        return None
+    session = await db.sessions.find_one({"token": token}, {"_id": 0})
+    if not session:
+        return None
+    user = await db.users.find_one({"id": session["user_id"]}, {"_id": 0})
+    return user
+
+
+# ---------- Auth Routes ----------
+@api_router.post("/auth/google")
+async def auth_google(payload: GoogleAuthPayload):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not available")
+
+    email = None
+    name = None
+    google_id = None
+    picture = None
+
+    if payload.credential:
+        # Verify Google ID Token via Google's tokeninfo API
+        try:
+            resp = requests.get(
+                f"https://oauth2.googleapis.com/tokeninfo?id_token={payload.credential}",
+                timeout=6
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                email = data.get("email")
+                name = data.get("name") or (email.split("@")[0] if email else "Player")
+                google_id = data.get("sub")
+                picture = data.get("picture")
+            else:
+                raise HTTPException(status_code=401, detail="Invalid Google credential token")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logging.error(f"Google token verification error: {e}")
+            raise HTTPException(status_code=401, detail="Google authentication verification failed")
+    elif payload.demo_email:
+        # Instant Profile Creator fallback for instant testing / dev
+        email = payload.demo_email.strip().lower()
+        name = payload.demo_name or email.split("@")[0]
+        google_id = f"demo_{uuid.uuid4().hex[:12]}"
+        picture = payload.demo_picture or f"https://api.dicebear.com/7.x/bottts/svg?seed={name}"
+    else:
+        raise HTTPException(status_code=400, detail="Google credential or demo_email is required")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    user = await db.users.find_one({"$or": [{"google_id": google_id}, {"email": email}]}, {"_id": 0})
+
+    if user:
+        # Existing user login
+        updates = {"last_login_at": now_iso}
+        if picture and not user.get("picture"):
+            updates["picture"] = picture
+        if name and not user.get("name"):
+            updates["name"] = name
+        await db.users.update_one({"id": user["id"]}, {"$set": updates})
+        user = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    else:
+        # New profile creation
+        clean_tag = (name or "Student").replace(" ", "_")[:12]
+        gamer_tag = f"{clean_tag}_{random.randint(10, 99)}"
+        new_user = UserProfile(
+            google_id=google_id,
+            email=email,
+            name=name,
+            gamer_tag=gamer_tag,
+            picture=picture,
+            created_at=now_iso,
+            last_login_at=now_iso,
+            subscription_tier="free",
+            subscription_status="active",
+            stats=UserStats(),
+            preferences=UserPreferences(),
+        )
+        await db.users.insert_one(new_user.model_dump())
+        user = new_user.model_dump()
+
+    # Create persistent session token
+    token = f"pfs_{uuid.uuid4().hex}"
+    session_doc = {
+        "token": token,
+        "user_id": user["id"],
+        "created_at": now_iso,
+    }
+    await db.sessions.insert_one(session_doc)
+
+    return {"token": token, "user": user}
+
+
+@api_router.get("/auth/me")
+async def get_my_profile(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return user
+
+
+@api_router.put("/auth/profile")
+async def update_my_profile(payload: ProfileUpdatePayload, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    updates = {}
+    if payload.gamer_tag:
+        updates["gamer_tag"] = payload.gamer_tag.strip()[:20]
+
+    prefs = user.get("preferences", {})
+    if payload.favorite_ink:
+        prefs["favorite_ink"] = payload.favorite_ink
+    if payload.aim_mode:
+        prefs["aim_mode"] = payload.aim_mode
+    if payload.favorite_ink or payload.aim_mode:
+        updates["preferences"] = prefs
+
+    if updates:
+        await db.users.update_one({"id": user["id"]}, {"$set": updates})
+        user = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return user
+
+
+@api_router.post("/auth/logout")
+async def logout(authorization: Optional[str] = Header(None)):
+    if authorization and authorization.startswith("Bearer ") and db is not None:
+        token = authorization.split(" ")[1].strip()
+        await db.sessions.delete_many({"token": token})
+    return {"message": "Logged out successfully"}
+
+
 @api_router.post("/matches", response_model=Match)
-async def create_match(payload: MatchCreate):
+async def create_match(payload: MatchCreate, authorization: Optional[str] = Header(None)):
     match = Match(**payload.model_dump())
     if db is not None:
         await db.matches.insert_one(match.model_dump())
+
+        # Link match result to user profile stats
+        user = await get_current_user(authorization)
+        if not user and payload.user_id:
+            user = await db.users.find_one({"id": payload.user_id}, {"_id": 0})
+
+        if user:
+            is_win = (payload.winner == "p1")
+            stats = user.get("stats", {
+                "games_played": 0,
+                "wins": 0,
+                "losses": 0,
+                "win_streak": 0,
+                "best_win_streak": 0,
+            })
+            stats["games_played"] = stats.get("games_played", 0) + 1
+            if is_win:
+                stats["wins"] = stats.get("wins", 0) + 1
+                curr_streak = stats.get("win_streak", 0) + 1
+                stats["win_streak"] = curr_streak
+                if curr_streak > stats.get("best_win_streak", 0):
+                    stats["best_win_streak"] = curr_streak
+            else:
+                stats["losses"] = stats.get("losses", 0) + 1
+                stats["win_streak"] = 0
+            await db.users.update_one({"id": user["id"]}, {"$set": {"stats": stats}})
+
     return match
 
 
