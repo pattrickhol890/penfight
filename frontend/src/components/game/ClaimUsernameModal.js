@@ -3,9 +3,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { AtSign, CheckCircle2, AlertCircle, Loader2, Sparkles, X, ShieldAlert } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
-const paper =
-  "radial-gradient(#141E50 0.75px, transparent 0.75px), #F5F0EA";
-
 export default function ClaimUsernameModal({ isOpen, onClose }) {
   const { user, checkUsernameAvailability, claimUsername } = useAuth();
 
@@ -127,19 +124,24 @@ export default function ClaimUsernameModal({ isOpen, onClose }) {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md select-none">
         <motion.div
-          initial={{ opacity: 0, scale: 0.92, y: 15 }}
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.92, y: 15 }}
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ type: "spring", stiffness: 350, damping: 28 }}
-          className="relative w-full max-w-md rounded-2xl p-6 shadow-2xl border-4 border-[#141E50] text-[#141E50] overflow-hidden"
-          style={{ backgroundImage: paper, backgroundSize: "16px 16px" }}
+          className="relative w-full max-w-md rounded-2xl p-6 sm:p-7 shadow-2xl border-4 border-[#141E50] text-[#0F172A] overflow-hidden"
+          style={{
+            backgroundColor: "#FAF7F0",
+            backgroundImage: "radial-gradient(#141E50 0.8px, transparent 0.8px)",
+            backgroundSize: "20px 20px",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 2px #141E50",
+          }}
         >
-          {/* Notebook Spiral Edge */}
-          <div className="absolute top-0 left-0 right-0 h-3 bg-[#141E50]/10 flex justify-around items-center px-4">
-            {Array.from({ length: 14 }).map((_, i) => (
-              <div key={i} className="w-1.5 h-1.5 rounded-full bg-[#141E50]/30" />
+          {/* Top Notebook Binder Accent */}
+          <div className="absolute top-0 left-0 right-0 h-3.5 bg-[#141E50]/15 flex justify-around items-center px-4">
+            {Array.from({ length: 16 }).map((_, i) => (
+              <div key={i} className="w-1.5 h-1.5 rounded-full bg-[#141E50]/40" />
             ))}
           </div>
 
@@ -147,33 +149,33 @@ export default function ClaimUsernameModal({ isOpen, onClose }) {
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-4 right-4 p-1 rounded-full text-[#141E50]/60 hover:text-[#141E50] hover:bg-[#141E50]/10 transition-colors"
-            title="Decide later"
+            className="absolute top-4 right-4 p-1.5 rounded-full text-[#141E50]/70 hover:text-[#141E50] hover:bg-[#141E50]/10 transition-colors"
+            title="Close"
           >
             <X className="w-5 h-5" />
           </button>
 
           {/* Header */}
           <div className="mt-2 text-center">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 border border-amber-300 text-amber-900 font-mono text-xs font-bold mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 border border-amber-300 text-amber-950 font-bold text-xs mb-2.5 shadow-sm">
+              <Sparkles className="w-3.5 h-3.5 text-amber-700" />
               <span>ONBOARDING STEP</span>
             </div>
-            <h2 className="text-2xl font-black font-mono tracking-tight text-[#141E50]">
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-[#0F172A]">
               Claim Your Handle
             </h2>
-            <p className="mt-1 font-mono text-xs text-[#141E50]/75 max-w-xs mx-auto">
+            <p className="mt-1.5 text-xs sm:text-sm font-medium text-[#334155] max-w-xs mx-auto leading-relaxed">
               Your unique identity in classroom duels, rankings, and desk passes.
             </p>
           </div>
 
           {/* Input Field with live feedback */}
           <div className="mt-5">
-            <label className="block font-mono text-xs font-bold uppercase tracking-wider text-[#141E50]/80 mb-1.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#0F172A] mb-1.5">
               Choose Username
             </label>
             <div className="relative flex items-center">
-              <span className="absolute left-3 font-mono font-black text-base text-[#141E50]/60 select-none">
+              <span className="absolute left-3.5 font-black text-lg text-[#0F172A]/70 select-none">
                 @
               </span>
               <input
@@ -185,55 +187,60 @@ export default function ClaimUsernameModal({ isOpen, onClose }) {
                   setInputVal(val);
                 }}
                 placeholder="pen_master"
-                className="w-full rounded-xl border-2 border-[#141E50] bg-white pl-8 pr-10 py-2.5 font-mono text-base font-bold text-[#141E50] outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-400/20"
+                className="w-full rounded-xl border-2 border-[#141E50] bg-white pl-9 pr-11 py-3 text-base sm:text-lg font-bold text-[#0F172A] outline-none transition focus:border-blue-700 focus:ring-4 focus:ring-blue-500/20 shadow-inner placeholder:text-[#94A3B8]"
               />
 
-              {/* Status Icon */}
-              <div className="absolute right-3 flex items-center">
+              {/* Status Icon inside input */}
+              <div className="absolute right-3.5 flex items-center">
                 {checking ? (
-                  <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                  <Loader2 className="w-5 h-5 text-blue-700 animate-spin" />
                 ) : status === "available" || status === "is_current" ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                 ) : status === "taken" || status === "invalid" ? (
-                  <AlertCircle className="w-4 h-4 text-rose-600" />
+                  <AlertCircle className="w-5 h-5 text-rose-600" />
                 ) : null}
               </div>
             </div>
 
             {/* Validation Feedback Line */}
-            <div className="mt-2 min-h-[20px] font-mono text-xs">
+            <div className="mt-2.5 min-h-[28px]">
               {checking ? (
-                <span className="text-blue-700 flex items-center gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin inline" /> Checking availability...
-                </span>
+                <div className="rounded-lg bg-blue-50 border border-blue-200 px-2.5 py-1 text-xs font-semibold text-blue-800 flex items-center gap-1.5">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0 text-blue-700" />
+                  <span>Checking handle availability...</span>
+                </div>
               ) : status === "available" ? (
-                <span className="text-emerald-700 font-bold flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 inline" /> {statusMsg}
-                </span>
+                <div className="rounded-lg bg-emerald-50 border border-emerald-300 px-2.5 py-1 text-xs font-bold text-emerald-800 flex items-center gap-1.5 shadow-sm">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                  <span>{statusMsg}</span>
+                </div>
               ) : status === "is_current" ? (
-                <span className="text-blue-700 font-bold flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 inline" /> {statusMsg}
-                </span>
+                <div className="rounded-lg bg-blue-50 border border-blue-300 px-2.5 py-1 text-xs font-bold text-blue-800 flex items-center gap-1.5 shadow-sm">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-blue-600" />
+                  <span>{statusMsg}</span>
+                </div>
               ) : status === "taken" ? (
-                <span className="text-rose-700 font-bold flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5 inline" /> {statusMsg}
-                </span>
+                <div className="rounded-lg bg-rose-50 border border-rose-300 px-2.5 py-1 text-xs font-bold text-rose-800 flex items-center gap-1.5 shadow-sm">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
+                  <span>{statusMsg}</span>
+                </div>
               ) : status === "invalid" ? (
-                <span className="text-amber-800 font-bold flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5 inline" /> {statusMsg}
-                </span>
+                <div className="rounded-lg bg-amber-50 border border-amber-300 px-2.5 py-1 text-xs font-bold text-amber-900 flex items-center gap-1.5 shadow-sm">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-700" />
+                  <span>{statusMsg}</span>
+                </div>
               ) : (
-                <span className="text-[#141E50]/60">
-                  3–20 characters. Letters, numbers, and underscores.
-                </span>
+                <p className="text-xs text-[#475569] font-medium pl-1">
+                  3–20 characters. Letters, numbers, and underscores only.
+                </p>
               )}
             </div>
           </div>
 
           {/* Quick Suggestions */}
           {suggestions.length > 0 && (
-            <div className="mt-3">
-              <span className="font-mono text-[11px] text-[#141E50]/70 font-semibold block mb-1">
+            <div className="mt-2.5">
+              <span className="text-xs font-bold text-[#334155] block mb-1">
                 Suggestions:
               </span>
               <div className="flex flex-wrap gap-1.5">
@@ -242,7 +249,7 @@ export default function ClaimUsernameModal({ isOpen, onClose }) {
                     key={sug}
                     type="button"
                     onClick={() => setInputVal(sug)}
-                    className="rounded-lg border border-[#141E50]/30 bg-white/80 px-2 py-0.5 font-mono text-xs font-bold text-[#141E50] hover:bg-[#141E50]/10 transition active:scale-95"
+                    className="rounded-lg border-2 border-[#141E50]/30 bg-white px-2.5 py-1 text-xs font-bold text-[#0F172A] hover:bg-slate-100 hover:border-[#141E50] transition active:scale-95 shadow-sm"
                   >
                     @{sug}
                   </button>
@@ -252,41 +259,43 @@ export default function ClaimUsernameModal({ isOpen, onClose }) {
           )}
 
           {/* 90-Day Policy Alert */}
-          <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50/80 p-2.5 text-xs text-amber-900 font-mono flex items-start gap-2">
-            <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-            <div className="text-[11px] leading-tight">
-              <strong className="block text-amber-950 font-bold mb-0.5">90-Day Handle Policy</strong>
-              Once claimed, you will only be able to change your handle again after <strong>90 days</strong>.
+          <div className="mt-4 rounded-xl border-2 border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 flex items-start gap-2.5 shadow-sm">
+            <ShieldAlert className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+            <div className="text-xs leading-snug">
+              <strong className="block text-amber-950 font-bold mb-0.5">
+                ⚠️ 90-Day Handle Policy
+              </strong>
+              Once claimed, your handle is locked. You can only change it again after <strong>90 days</strong>.
             </div>
           </div>
 
           {submitError && (
-            <div className="mt-3 rounded-lg border border-rose-300 bg-rose-50 p-2 text-xs text-rose-700 font-mono font-bold flex items-center gap-1.5">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+            <div className="mt-3 rounded-lg border-2 border-rose-300 bg-rose-50 p-2.5 text-xs text-rose-800 font-bold flex items-center gap-2 shadow-sm">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
               <span>{submitError}</span>
             </div>
           )}
 
           {/* Action Buttons */}
-          <div className="mt-5 flex flex-col gap-2">
+          <div className="mt-5 flex flex-col gap-2.5">
             <button
               type="button"
               disabled={!canSubmit}
               onClick={() => handleClaim()}
-              className={`w-full py-2.5 rounded-xl font-mono text-sm font-black tracking-wide uppercase transition shadow-md flex items-center justify-center gap-2 ${
+              className={`w-full py-3 rounded-xl text-sm sm:text-base font-black tracking-wide uppercase transition shadow-md flex items-center justify-center gap-2 ${
                 canSubmit
-                  ? "bg-[#141E50] text-white hover:bg-[#1f2d6e] active:scale-98 cursor-pointer"
+                  ? "bg-[#141E50] text-white hover:bg-[#1E293B] active:scale-[0.99] cursor-pointer shadow-lg"
                   : "bg-[#141E50]/30 text-white/70 cursor-not-allowed"
               }`}
             >
               {submitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-5 h-5 animate-spin" />
                   <span>Claiming Handle...</span>
                 </>
               ) : (
                 <>
-                  <AtSign className="w-4 h-4" />
+                  <AtSign className="w-5 h-5" />
                   <span>Claim Handle & Enter Arena</span>
                 </>
               )}
@@ -297,7 +306,7 @@ export default function ClaimUsernameModal({ isOpen, onClose }) {
                 type="button"
                 onClick={() => handleClaim(user.username)}
                 disabled={submitting}
-                className="w-full py-2 rounded-xl font-mono text-xs font-bold text-[#141E50]/80 hover:bg-[#141E50]/10 transition text-center"
+                className="w-full py-2 rounded-xl text-xs font-bold text-[#334155] hover:bg-black/5 transition text-center"
               >
                 Keep Default (@{user.username})
               </button>

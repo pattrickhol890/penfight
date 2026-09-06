@@ -196,6 +196,7 @@ export default function ProfileModal({ isOpen, onClose }) {
                   <button
                     type="button"
                     onClick={() => {
+                      onClose();
                       if (setClaimUsernameModalOpen) setClaimUsernameModalOpen(true);
                     }}
                     className="inline-flex items-center gap-1 rounded bg-amber-100 border border-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-900 hover:bg-amber-200 transition active:scale-95"
@@ -218,6 +219,7 @@ export default function ProfileModal({ isOpen, onClose }) {
                     <button
                       type="button"
                       onClick={() => {
+                        onClose();
                         if (setClaimUsernameModalOpen) setClaimUsernameModalOpen(true);
                       }}
                       className="text-[10px] font-mono font-bold text-blue-700 underline hover:text-blue-900"
