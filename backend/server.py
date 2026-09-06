@@ -239,6 +239,10 @@ async def auth_google(payload: GoogleAuthPayload):
             )
             if resp.status_code == 200:
                 data = resp.json()
+                expected_aud = os.environ.get("GOOGLE_CLIENT_ID")
+                if expected_aud and data.get("aud") != expected_aud:
+                    logger.warning("Google token audience mismatch")
+                    raise HTTPException(status_code=401, detail="Google token audience mismatch")
                 email = data.get("email")
                 name = data.get("name") or (email.split("@")[0] if email else "Player")
                 google_id = data.get("sub")
