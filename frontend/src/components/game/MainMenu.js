@@ -4,6 +4,7 @@ import { Volume2, VolumeX, User, Users, Cpu, Globe, Copy, Check, Loader2, ArrowL
 import { useAuth } from "../../context/AuthContext";
 import ProfileModal from "./ProfileModal";
 import GoogleAuthModal from "./GoogleAuthModal";
+import ClaimUsernameModal from "./ClaimUsernameModal";
 
 const paper =
   "https://images.unsplash.com/photo-1695131020187-d3dcdab5016b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwxfHxydWxlZCUyMG5vdGVib29rJTIwcGFwZXIlMjB0ZXh0dXJlfGVufDB8fHx8MTc4NzkyMjg0MXww&ixlib=rb-4.1.0&q=85";
@@ -43,7 +44,7 @@ const Diff = ({ v, cur, set }) => (
 );
 
 export default function MainMenu({ onStart, muted, onToggleMute, mp }) {
-  const { user } = useAuth();
+  const { user, claimUsernameModalOpen, setClaimUsernameModalOpen } = useAuth();
   const [mode, setMode] = useState("ai");
   const [difficulty, setDifficulty] = useState("medium");
   const [joinCode, setJoinCode] = useState("");
@@ -80,23 +81,35 @@ export default function MainMenu({ onStart, muted, onToggleMute, mp }) {
           <p className="font-mono text-xs font-bold uppercase tracking-[0.3em] text-[#B42828]">desk classics</p>
           <div className="flex items-center gap-2">
             {user ? (
-              <button
-                onClick={() => setProfileOpen(true)}
-                className="flex items-center gap-1.5 rounded-full border border-[#141E50]/30 bg-white/80 py-0.5 pl-1 pr-2.5 shadow-sm hover:bg-white transition-transform active:scale-95"
-                title="View Profile & Stats"
-              >
-                <img
-                  src={user.picture || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.name}`}
-                  alt={user.gamer_tag}
-                  className="w-5 h-5 rounded-full border border-[#141E50]/50 object-cover"
-                />
-                <span className="font-mono text-xs font-bold text-[#141E50] max-w-[90px] truncate">
-                  {user.gamer_tag}
-                </span>
-                <span className="rounded bg-[#8C6A48]/20 px-1 py-0.2 text-[9px] font-mono font-bold text-[#8C6A48] uppercase">
-                  {user.subscription_tier || "FREE"}
-                </span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setProfileOpen(true)}
+                  className="flex items-center gap-1.5 rounded-full border border-[#141E50]/30 bg-white/80 py-0.5 pl-1 pr-2.5 shadow-sm hover:bg-white transition-transform active:scale-95"
+                  title="View Profile & Stats"
+                >
+                  <img
+                    src={user.picture || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.name}`}
+                    alt={user.gamer_tag}
+                    className="w-5 h-5 rounded-full border border-[#141E50]/50 object-cover"
+                  />
+                  <span className="font-mono text-xs font-bold text-[#141E50] max-w-[90px] truncate">
+                    @{user.username || user.gamer_tag}
+                  </span>
+                  <span className="rounded bg-[#8C6A48]/20 px-1 py-0.2 text-[9px] font-mono font-bold text-[#8C6A48] uppercase">
+                    {user.subscription_tier || "FREE"}
+                  </span>
+                </button>
+
+                {user.username_claimed === false && (
+                  <button
+                    onClick={() => setClaimUsernameModalOpen(true)}
+                    className="rounded-full bg-amber-100 border border-amber-400 px-2 py-0.5 text-[10px] font-mono font-bold text-amber-900 shadow-sm hover:bg-amber-200 transition active:scale-95 animate-pulse"
+                    title="Claim your permanent handle"
+                  >
+                    Claim @
+                  </button>
+                )}
+              </div>
             ) : (
               <button
                 onClick={() => setAuthOpen(true)}
@@ -281,6 +294,7 @@ export default function MainMenu({ onStart, muted, onToggleMute, mp }) {
 
       <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
       <GoogleAuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
+      <ClaimUsernameModal isOpen={claimUsernameModalOpen} onClose={() => setClaimUsernameModalOpen(false)} />
     </div>
   );
 }

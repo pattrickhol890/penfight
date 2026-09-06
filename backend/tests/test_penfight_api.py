@@ -139,3 +139,62 @@ def test_auth_profile_flow(api):
         r_me3 = api.get(f"{BASE_URL}/api/auth/me", headers=headers)
         assert r_me3.status_code == 401
 
+
+def test_username_validation_and_claiming(api):
+    # 1. Create a new demo user
+    suffix = os.urandom(3).hex()
+    demo_email = f"flickmaster_{suffix}@school.edu"
+    r = api.post(f"{BASE_URL}/api/auth/google", json={"demo_name": "Flick Master", "demo_email": demo_email})
+    if r.status_code != 200:
+        return
+    data = r.json()
+    token = data["token"]
+    user = data["user"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Verify existing / auto-assigned default username from email prefix
+    assert user["username"].startswith("flickmaster_")
+    assert user["username_claimed"] is False
+
+    # 2. Test Live Check Username API
+    # Too short
+    r_short = api.get(f"{BASE_URL}/api/auth/check-username?username=ab")
+    assert r_short.status_code == 200
+    assert r_short.json()["available"] is False
+
+    # Invalid characters
+    r_chars = api.get(f"{BASE_URL}/api/auth/check-username?username=test@user!")
+    assert r_chars.status_code == 200
+    assert r_chars.json()["available"] is False
+
+    # Reserved username
+    r_res = api.get(f"{BASE_URL}/api/auth/check-username?username=admin")
+    assert r_res.status_code == 200
+    assert r_res.json()["available"] is False
+
+    # Available handle
+    desired_handle = f"champ_{suffix}"
+    r_avail = api.get(f"{BASE_URL}/api/auth/check-username?username={desired_handle}")
+    assert r_avail.status_code == 200
+    assert r_avail.json()["available"] is True
+
+    # 3. Claim custom handle (Initial onboarding claim)
+    r_claim = api.post(f"{BASE_URL}/api/auth/claim-username", json={"username": desired_handle}, headers=headers)
+    assert r_claim.status_code == 200
+    claimed_user = r_claim.json()["user"]
+    assert claimed_user["username"] == desired_handle
+    assert claimed_user["username_claimed"] is True
+    assert claimed_user["username_last_changed_at"] is not None
+
+    # Now the handle should be taken when checked by another user
+    r_taken = api.get(f"{BASE_URL}/api/auth/check-username?username={desired_handle}")
+    assert r_taken.status_code == 200
+    assert r_taken.json()["available"] is False
+
+    # 4. Attempt to change handle again immediately -> Must fail with 90-day cooldown error (HTTP 400)
+    new_handle = f"new_{suffix}"
+    r_second = api.post(f"{BASE_URL}/api/auth/claim-username", json={"username": new_handle}, headers=headers)
+    assert r_second.status_code == 400
+    assert "90 days" in r_second.json()["detail"]
+
+

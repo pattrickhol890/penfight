@@ -13,6 +13,9 @@ import {
   Zap,
   Target,
   PenTool,
+  Lock,
+  ShieldCheck,
+  AtSign,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
@@ -20,7 +23,7 @@ const paper =
   "https://images.unsplash.com/photo-1695131020187-d3dcdab5016b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwxfHxydWxlZCUyMG5vdGVib29rJTIwcGFwZXIlMjB0ZXh0dXJlfGVufDB8fHx8MTc4NzkyMjg0MXww&ixlib=rb-4.1.0&q=85";
 
 export default function ProfileModal({ isOpen, onClose }) {
-  const { user, updateProfile, logout } = useAuth();
+  const { user, updateProfile, logout, setClaimUsernameModalOpen } = useAuth();
 
   const [isEditingTag, setIsEditingTag] = useState(false);
   const [gamerTag, setGamerTag] = useState(user?.gamer_tag || "");
@@ -28,6 +31,37 @@ export default function ProfileModal({ isOpen, onClose }) {
   const [aimMode, setAimMode] = useState(user?.preferences?.aim_mode || "slingshot");
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [subNotice, setSubNotice] = useState(false);
+
+  // Calculate 90-day cooldown status for username changes
+  const getCooldownInfo = () => {
+    if (!user?.username_claimed || !user?.username_last_changed_at) {
+      return { isLocked: false };
+    }
+    try {
+      const lastChanged = new Date(user.username_last_changed_at);
+      const now = new Date();
+      const diffMs = now.getTime() - lastChanged.getTime();
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+      if (diffDays < 90) {
+        const daysLeft = Math.ceil(90 - diffDays);
+        const unlockDate = new Date(lastChanged.getTime() + 90 * 24 * 60 * 60 * 1000);
+        return {
+          isLocked: true,
+          daysLeft,
+          unlockDateStr: unlockDate.toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }),
+        };
+      }
+    } catch (e) {
+      console.warn("Cooldown calculation error:", e);
+    }
+    return { isLocked: false };
+  };
+
+  const cooldown = getCooldownInfo();
 
   // Sync state when user changes
   React.useEffect(() => {
@@ -146,10 +180,73 @@ export default function ProfileModal({ isOpen, onClose }) {
                   </div>
                 )}
               </div>
-              <p className="font-mono text-xs text-[#141E50]/70 truncate">{user.name}</p>
+
+              {/* Unique Handle & 90-Day Claim Status */}
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                <span className="font-mono text-xs font-bold text-[#141E50]">
+                  @{user.username || user.gamer_tag}
+                </span>
+
+                {user.username_claimed ? (
+                  <span className="inline-flex items-center gap-0.5 rounded bg-emerald-100 border border-emerald-300 px-1.5 py-0.2 font-mono text-[10px] font-bold text-emerald-800">
+                    <ShieldCheck className="w-3 h-3 text-emerald-700" />
+                    <span>Claimed</span>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (setClaimUsernameModalOpen) setClaimUsernameModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 rounded bg-amber-100 border border-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-900 hover:bg-amber-200 transition active:scale-95"
+                  >
+                    <AtSign className="w-3 h-3 text-amber-700" />
+                    <span>Claim Handle</span>
+                  </button>
+                )}
+
+                {user.username_claimed && (
+                  cooldown.isLocked ? (
+                    <span
+                      title={`You can change your handle again on ${cooldown.unlockDateStr} (once per 90 days)`}
+                      className="inline-flex items-center gap-1 rounded bg-slate-100 border border-slate-300 px-1.5 py-0.2 font-mono text-[10px] font-semibold text-slate-700"
+                    >
+                      <Lock className="w-2.5 h-2.5 text-slate-500" />
+                      <span>{cooldown.daysLeft}d left</span>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (setClaimUsernameModalOpen) setClaimUsernameModalOpen(true);
+                      }}
+                      className="text-[10px] font-mono font-bold text-blue-700 underline hover:text-blue-900"
+                    >
+                      Change
+                    </button>
+                  )
+                )}
+              </div>
+
+              <p className="font-mono text-[11px] text-[#141E50]/70 truncate mt-0.5">{user.name}</p>
               <p className="font-mono text-[10px] text-[#141E50]/50 truncate">{user.email}</p>
             </div>
           </div>
+
+          {/* 90-Day Handle Policy Banner */}
+          {user.username_claimed && cooldown.isLocked && (
+            <div className="mt-3 rounded-lg border border-[#141E50]/15 bg-white/60 p-2 font-mono text-[11px] text-[#141E50]/80 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                <span>
+                  Handle locked for <strong>{cooldown.daysLeft} days</strong> (available <strong>{cooldown.unlockDateStr}</strong>).
+                </span>
+              </div>
+              <span className="text-[10px] uppercase font-bold text-[#141E50]/50 shrink-0">
+                90-Day Rule
+              </span>
+            </div>
+          )}
 
           {/* Subscription / Desk Pass Card */}
           <div

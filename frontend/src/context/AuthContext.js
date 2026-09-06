@@ -123,6 +123,65 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const [claimUsernameModalOpen, setClaimUsernameModalOpen] = useState(false);
+
+  // Check username availability with live backend validator
+  const checkUsernameAvailability = useCallback(
+    async (username) => {
+      if (!username || !username.trim()) {
+        return { available: false, reason: "Username cannot be empty" };
+      }
+      try {
+        const res = await axios.get(
+          `${API}/auth/check-username?username=${encodeURIComponent(username.trim())}`,
+          { headers: getAuthHeaders() }
+        );
+        return res.data;
+      } catch (err) {
+        return {
+          available: false,
+          reason: err.response?.data?.detail || "Error checking username",
+        };
+      }
+    },
+    [getAuthHeaders]
+  );
+
+  // Claim or update username
+  const claimUsername = useCallback(
+    async (username) => {
+      if (!token) return { success: false, error: "Not logged in" };
+      try {
+        const res = await axios.post(
+          `${API}/auth/claim-username`,
+          { username: username.trim() },
+          { headers: getAuthHeaders() }
+        );
+        if (res.data?.user) {
+          setUser(res.data.user);
+          localStorage.setItem(USER_KEY, JSON.stringify(res.data.user));
+          return { success: true, user: res.data.user };
+        }
+        return { success: false, error: "Unexpected server response" };
+      } catch (err) {
+        const msg = err.response?.data?.detail || "Failed to claim username";
+        return { success: false, error: msg };
+      }
+    },
+    [token, getAuthHeaders]
+  );
+
+  // Automatically trigger onboarding claim modal if an active user hasn't claimed their handle
+  useEffect(() => {
+    if (user && user.username_claimed === false) {
+      // Small timeout to avoid clashing with auth login transitions
+      const timer = setTimeout(() => {
+        setClaimUsernameModalOpen(true);
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [user]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -132,6 +191,10 @@ export function AuthProvider({ children }) {
         loginWithGoogle,
         loginDemo,
         updateProfile,
+        checkUsernameAvailability,
+        claimUsername,
+        claimUsernameModalOpen,
+        setClaimUsernameModalOpen,
         logout,
         refreshProfile,
         getAuthHeaders,

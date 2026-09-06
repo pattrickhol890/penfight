@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import re
+import math
 import requests
 import logging
 import random
@@ -13,7 +15,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 logging.basicConfig(
     level=logging.INFO,
@@ -172,6 +174,48 @@ class UserStats(BaseModel):
     best_win_streak: int = 0
 
 
+RESERVED_USERNAMES = {
+    "admin", "administrator", "root", "system", "penfight", "moderator",
+    "mod", "guest", "null", "undefined", "official", "support", "help",
+    "api", "bot", "anonymous", "test", "superuser", "owner"
+}
+
+
+def sanitize_username(candidate: str) -> str:
+    cleaned = re.sub(r'[^a-zA-Z0-9_]', '', candidate.strip())
+    if len(cleaned) < 3:
+        cleaned = f"student_{cleaned}"[:15]
+    return cleaned[:20]
+
+
+async def generate_unique_default_username(email: str, current_user_id: Optional[str] = None) -> str:
+    prefix = email.split("@")[0] if "@" in email else email
+    base = sanitize_username(prefix)
+    candidate = base
+    suffix_idx = 1
+    while True:
+        existing = await db_find_user({"username_lower": candidate.lower()})
+        if not existing or (current_user_id and existing.get("id") == current_user_id):
+            return candidate
+        suffix = f"_{suffix_idx}"
+        candidate = f"{base[:20 - len(suffix)]}{suffix}"
+        suffix_idx += 1
+
+
+async def ensure_user_has_username(user: dict) -> dict:
+    if not user.get("username"):
+        email = user.get("email") or f"student_{user.get('id', '')[:6]}@penfight.local"
+        default_user = await generate_unique_default_username(email, current_user_id=user.get("id"))
+        updates = {
+            "username": default_user,
+            "username_lower": default_user.lower(),
+            "username_claimed": False,
+        }
+        user.update(updates)
+        await db_update_user(user["id"], updates)
+    return user
+
+
 class UserProfile(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -179,6 +223,10 @@ class UserProfile(BaseModel):
     email: str
     name: str
     gamer_tag: str
+    username: str = ""
+    username_lower: str = ""
+    username_claimed: bool = False
+    username_last_changed_at: Optional[str] = None
     picture: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     last_login_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -201,6 +249,10 @@ class ProfileUpdatePayload(BaseModel):
     gamer_tag: Optional[str] = None
     favorite_ink: Optional[str] = None
     aim_mode: Optional[str] = None
+
+
+class ClaimUsernamePayload(BaseModel):
+    username: str
 
 
 class MatchCreate(BaseModel):
@@ -333,7 +385,10 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> Optio
     session = await db_get_session(token)
     if not session:
         return None
-    return await db_find_user({"id": session["user_id"]})
+    user = await db_find_user({"id": session["user_id"]})
+    if user:
+        user = await ensure_user_has_username(user)
+    return user
 
 
 # ---------- Auth Routes ----------
@@ -390,22 +445,27 @@ async def auth_google(payload: GoogleAuthPayload):
         user = await db_find_user({"$or": query_parts})
 
     if user:
-        # Existing user login
+        # Existing user login - backfill username if legacy user
         updates = {"last_login_at": now_iso}
         if picture and not user.get("picture"):
             updates["picture"] = picture
         if name and not user.get("name"):
             updates["name"] = name
         user = await db_update_user(user["id"], updates)
+        user = await ensure_user_has_username(user)
     else:
-        # New profile creation
-        clean_tag = (name or "Student").replace(" ", "_")[:12]
-        gamer_tag = f"{clean_tag}_{random.randint(10, 99)}"
+        # New profile creation: assign default username from email prefix
+        default_username = await generate_unique_default_username(email)
+        clean_tag = (name or default_username).replace(" ", "_")[:12]
         new_user = UserProfile(
             google_id=google_id,
-            email=email or f"{gamer_tag.lower()}@penfight.local",
+            email=email or f"{default_username.lower()}@penfight.local",
             name=name or "Player",
-            gamer_tag=gamer_tag,
+            gamer_tag=default_username,
+            username=default_username,
+            username_lower=default_username.lower(),
+            username_claimed=False,
+            username_last_changed_at=None,
             picture=picture,
             created_at=now_iso,
             last_login_at=now_iso,
@@ -430,6 +490,94 @@ async def get_my_profile(authorization: Optional[str] = Header(None)):
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return user
+
+
+@api_router.get("/auth/check-username")
+async def check_username_availability(username: str, authorization: Optional[str] = Header(None)):
+    raw_name = username.strip()
+    if not raw_name:
+        return {"available": False, "reason": "Username cannot be empty."}
+
+    if len(raw_name) < 3:
+        return {"available": False, "reason": "Username must be at least 3 characters."}
+
+    if len(raw_name) > 20:
+        return {"available": False, "reason": "Username cannot exceed 20 characters."}
+
+    if not re.match(r"^[a-zA-Z0-9_]+$", raw_name):
+        return {"available": False, "reason": "Only letters, numbers, and underscores allowed."}
+
+    if raw_name.lower() in RESERVED_USERNAMES:
+        return {"available": False, "reason": "This username is reserved."}
+
+    current_user = await get_current_user(authorization)
+    existing = await db_find_user({"username_lower": raw_name.lower()})
+    if existing:
+        if current_user and existing.get("id") == current_user.get("id"):
+            return {
+                "available": True,
+                "is_current": True,
+                "message": "This is already your current handle.",
+            }
+        return {"available": False, "reason": "Username is already taken."}
+
+    return {"available": True, "message": "Handle is available!"}
+
+
+@api_router.post("/auth/claim-username")
+async def claim_username(payload: ClaimUsernamePayload, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    new_username = payload.username.strip()
+    if len(new_username) < 3 or len(new_username) > 20:
+        raise HTTPException(status_code=400, detail="Username must be between 3 and 20 characters.")
+
+    if not re.match(r"^[a-zA-Z0-9_]+$", new_username):
+        raise HTTPException(status_code=400, detail="Only letters, numbers, and underscores allowed.")
+
+    if new_username.lower() in RESERVED_USERNAMES:
+        raise HTTPException(status_code=400, detail="This username is reserved.")
+
+    # Check uniqueness
+    existing = await db_find_user({"username_lower": new_username.lower()})
+    if existing and existing.get("id") != user.get("id"):
+        raise HTTPException(status_code=409, detail="Username is already taken.")
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+
+    # 90-Day Cooldown Check:
+    # If the user has already claimed a custom handle, enforce 90-day cooldown
+    if user.get("username_claimed") is True and user.get("username_last_changed_at"):
+        try:
+            last_changed_str = user["username_last_changed_at"].replace("Z", "+00:00")
+            last_changed = datetime.fromisoformat(last_changed_str)
+            elapsed_seconds = (now - last_changed).total_seconds()
+            cooldown_seconds = 90 * 86400
+            if elapsed_seconds < cooldown_seconds:
+                remaining_days = math.ceil((cooldown_seconds - elapsed_seconds) / 86400.0)
+                unlock_date = (last_changed + timedelta(days=90)).strftime("%b %d, %Y")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"You can only change your username once every 90 days. Next change available in {remaining_days} days (on {unlock_date}).",
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Error checking 90-day cooldown: {e}")
+
+    updates = {
+        "username": new_username,
+        "username_lower": new_username.lower(),
+        "gamer_tag": new_username,
+        "username_claimed": True,
+        "username_last_changed_at": now_iso,
+    }
+
+    updated_user = await db_update_user(user["id"], updates)
+    return {"success": True, "user": updated_user}
 
 
 @api_router.put("/auth/profile")
