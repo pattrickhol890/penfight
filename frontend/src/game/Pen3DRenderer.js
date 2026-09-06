@@ -14,10 +14,17 @@ export class Pen3DRenderer {
     // 1. Scene
     this.scene = new THREE.Scene();
 
-    // 2. Camera (Top-down Orthographic aligned with 900x600 canvas)
-    this.camera = new THREE.OrthographicCamera(0, CFG.W, 0, CFG.H, 1, 1500);
-    this.camera.position.set(0, 0, 600);
-    this.camera.lookAt(0, 0, 0);
+    // 2. Camera (Centered Top-down Orthographic aligned with 900x600 canvas)
+    this.camera = new THREE.OrthographicCamera(
+      -CFG.W / 2,
+      CFG.W / 2,
+      -CFG.H / 2,
+      CFG.H / 2,
+      1,
+      1500
+    );
+    this.camera.position.set(CFG.W / 2, CFG.H / 2, 600);
+    this.camera.lookAt(CFG.W / 2, CFG.H / 2, 0);
 
     // 3. WebGL Renderer
     this.renderer = new THREE.WebGLRenderer({
@@ -65,7 +72,7 @@ export class Pen3DRenderer {
     this.scene.add(fillLight);
 
     // 5. Shadow Receiver Plane for the Desk Surface
-    const shadowGeo = new THREE.PlaneGeometry(CFG.W + 200, CFG.H + 200);
+    const shadowGeo = new THREE.PlaneGeometry(CFG.W * 2, CFG.H * 2);
     const shadowMat = new THREE.ShadowMaterial({ opacity: 0.32 });
     this.shadowPlane = new THREE.Mesh(shadowGeo, shadowMat);
     this.shadowPlane.position.set(CFG.W / 2, CFG.H / 2, 0);
@@ -148,8 +155,11 @@ export class Pen3DRenderer {
     return geo;
   }
 
-  update(pens) {
+  update(pens, viewAngle = 0) {
     if (!this.loaded) return;
+
+    // Synchronize 360-degree table rotation around board center (450, 300)
+    this.camera.rotation.z = -viewAngle;
 
     const currentIds = new Set(pens.map((p) => p.penData.id));
 

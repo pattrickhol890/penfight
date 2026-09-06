@@ -9,6 +9,7 @@ import MainMenu from "../components/game/MainMenu";
 import Hud from "../components/game/Hud";
 import GameOverModal from "../components/game/GameOverModal";
 import RotateOverlay from "../components/game/RotateOverlay";
+import TableJoystick from "../components/game/TableJoystick";
 import { useMultiplayer } from "../hooks/useMultiplayer";
 
 const { Engine, World, Bodies, Body, Query, Events } = Matter;
@@ -105,6 +106,18 @@ export default function PenFight() {
   const [mode, setMode] = useState("ai");
   const [difficulty, setDifficulty] = useState("medium");
   const [winner, setWinner] = useState(null);
+  const [viewAngle, setViewAngle] = useState(0);
+  const viewAngleRef = useRef(0);
+
+  const handleRotate = (ang) => {
+    setViewAngle(ang);
+    viewAngleRef.current = ang;
+  };
+
+  const handleResetRotation = () => {
+    setViewAngle(0);
+    viewAngleRef.current = 0;
+  };
 
   const toggleAimMode = () => {
     setAimMode((prev) => {
@@ -120,6 +133,7 @@ export default function PenFight() {
     if (mp.opponentJoined && phase === "menu") {
       startGame("online", null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mp.opponentJoined, phase]);
 
   // Handle opponent flick in online mode
@@ -188,6 +202,7 @@ export default function PenFight() {
     if (mp.rematchTrigger > 0 && mode === "online") {
       startGame("online", null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mp.rematchTrigger, mode]);
 
   // Handle opponent disconnection
@@ -460,12 +475,19 @@ export default function PenFight() {
     const draw = () => {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, CFG.W, CFG.H);
+      const ang = viewAngleRef.current;
+      ctx.save();
+      if (ang) {
+        ctx.translate(CFG.W / 2, CFG.H / 2);
+        ctx.rotate(ang);
+        ctx.translate(-CFG.W / 2, -CFG.H / 2);
+      }
       drawBoard(ctx);
       const st = g.current;
 
       // Real 3D Meshy AI Pen Renderer (Three.js WebGL)
       if (pen3D && pen3D.loaded) {
-        pen3D.update(st.pens);
+        pen3D.update(st.pens, ang);
       } else {
         // High-fidelity procedural 2D fallback
         for (const pen of st.pens) drawPen(ctx, pen);
@@ -486,6 +508,7 @@ export default function PenFight() {
           });
         }
       }
+      ctx.restore();
     };
 
     const loop = (now) => {
@@ -601,7 +624,18 @@ export default function PenFight() {
       const r = wrap.getBoundingClientRect();
       const cx = e.touches ? e.touches[0].clientX : e.clientX;
       const cy = e.touches ? e.touches[0].clientY : e.clientY;
-      return { x: (cx - r.left) * (CFG.W / r.width), y: (cy - r.top) * (CFG.H / r.height) };
+      const rawX = (cx - r.left) * (CFG.W / r.width);
+      const rawY = (cy - r.top) * (CFG.H / r.height);
+      const ang = viewAngleRef.current;
+      if (!ang) return { x: rawX, y: rawY };
+      const ox = rawX - CFG.W / 2;
+      const oy = rawY - CFG.H / 2;
+      const cos = Math.cos(-ang);
+      const sin = Math.sin(-ang);
+      return {
+        x: CFG.W / 2 + (ox * cos - oy * sin),
+        y: CFG.H / 2 + (ox * sin + oy * cos),
+      };
     };
     const setZoom = (z) => {
       canvas.style.transform = `scale(${z})`;
@@ -645,17 +679,15 @@ export default function PenFight() {
     const onMove = (e) => {
       const st = g.current;
       if (!st.aiming) return;
-      const cx = e.touches ? e.touches[0].clientX : e.clientX;
-      const cy = e.touches ? e.touches[0].clientY : e.clientY;
-      const bs = st.aiming.baseScale;
-      const logdx = (cx - st.aiming.startClient.x) * bs;
-      const logdy = (cy - st.aiming.startClient.y) * bs;
-      const rawMag = Math.hypot(logdx, logdy);
+      const pt = getPoint(e);
+      const dx = pt.x - st.aiming.start.x;
+      const dy = pt.y - st.aiming.start.y;
+      const rawMag = Math.hypot(dx, dy);
       const isForward = st.aiming.aimMode === "forward";
       const maxDistance = isForward ? 110 : CFG.maxDrag;
       const cap = Math.min(rawMag, maxDistance);
-      const nx = rawMag > 0 ? logdx / rawMag : 0;
-      const ny = rawMag > 0 ? logdy / rawMag : 0;
+      const nx = rawMag > 0 ? dx / rawMag : 0;
+      const ny = rawMag > 0 ? dy / rawMag : 0;
       st.aiming.current = { x: st.aiming.start.x + nx * cap, y: st.aiming.start.y + ny * cap };
 
       const powerRatio = cap / maxDistance;
@@ -824,6 +856,7 @@ export default function PenFight() {
     setScores({ p1: n, p2: n });
     setWinner(null);
     setPower(0);
+    handleResetRotation();
   };
 
   const quitToMenu = () => {
@@ -832,6 +865,7 @@ export default function PenFight() {
     st.pens = [];
     st.phase = "menu";
     st.aiming = null;
+    handleResetRotation();
     if (st.mode === "online") {
       mp.leaveRoom();
     }
@@ -926,6 +960,14 @@ export default function PenFight() {
           onReplay={handleReplay}
           onMenu={quitToMenu}
           mp={mp}
+        />
+      )}
+
+      {phase === "playing" && (
+        <TableJoystick
+          viewAngle={viewAngle}
+          onRotate={handleRotate}
+          onReset={handleResetRotation}
         />
       )}
     </div>
