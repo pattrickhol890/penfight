@@ -16,6 +16,9 @@ export const CFG = {
   maxMovingMs: 6500,
   spinFactor: 0.72,
   maxOmega: 0.5,
+  clipHeight3D: 3.5, // 3D extension height of the clip
+  gravityZ: 0.28, // Downward table gravity in Z-axis
+  bounceZ: 0.35, // Restitution bounce when hitting table
   zoomAmt: 0.18,
   zoomMin: 0.82,
 };

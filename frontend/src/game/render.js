@@ -1,4 +1,4 @@
-﻿import { CFG, BOARD, INK } from "./constants";
+import { CFG, BOARD, INK } from "./constants";
 
 /**
  * Procedural Teakwood Desk Canvas Renderer
@@ -98,6 +98,8 @@ export function drawPen(ctx, pen) {
   const fallProgress = pen.penData.fallProgress || 0;
   const isFalling = pen.penData.falling;
   const teeter = pen.penData.teeter || 0;
+  const z = pen.penData.z || 0;
+  const rollAngle = pen.penData.rollAngle !== undefined ? pen.penData.rollAngle : 0;
 
   ctx.save();
   ctx.translate(position.x, position.y);
@@ -108,17 +110,26 @@ export function drawPen(ctx, pen) {
     const scale = Math.max(0.2, 1 - fallProgress * 0.4);
     ctx.scale(scale, scale);
     ctx.globalAlpha = Math.max(0, 1 - fallProgress * 1.15);
-  } else if (teeter > 0) {
-    // Subtle teetering wobble near edge
-    ctx.rotate(Math.sin(performance.now() * 0.018) * teeter * 0.06);
+  } else {
+    // 3D elevation perspective scaling (pen slightly expands as it lifts in Z)
+    if (z > 0.05) {
+      const zScale = 1 + z * 0.022;
+      ctx.scale(zScale, zScale);
+    }
+    if (teeter > 0) {
+      // Subtle teetering wobble near edge
+      ctx.rotate(Math.sin(performance.now() * 0.018) * teeter * 0.06);
+    }
   }
 
-  // ================= 1. DYNAMIC 3D DIRECTIONAL SHADOWS =================
-  const shadowAlpha = isFalling ? Math.max(0, 0.45 - fallProgress * 0.5) : 0.42;
-  const shadowDist = isFalling ? 8 + fallProgress * 35 : 5.5;
-  const shadowBlur = isFalling ? 10 + fallProgress * 20 : 7;
+  // ================= 1. DYNAMIC 3D DIRECTIONAL SHADOWS (Z-DETACHMENT) =================
+  const shadowAlpha = isFalling
+    ? Math.max(0, 0.45 - fallProgress * 0.5)
+    : Math.max(0.12, 0.42 / (1 + z * 0.14));
+  const shadowDist = isFalling ? 8 + fallProgress * 35 : (5.5 + z * 2.4);
+  const shadowBlur = isFalling ? 10 + fallProgress * 20 : (7 + z * 3.8);
 
-  // Soft Directional Cast Shadow
+  // Soft Directional Cast Shadow onto Teakwood Desk
   ctx.save();
   ctx.shadowColor = "rgba(15, 8, 2, " + shadowAlpha + ")";
   ctx.shadowBlur = shadowBlur;
@@ -127,18 +138,83 @@ export function drawPen(ctx, pen) {
   ctx.fillStyle = "rgba(0,0,0,0.01)";
   roundRect(ctx, -L / 2 - 4, -W / 2, L + 6, W, W / 2);
   ctx.fill();
+
+  // Distinct Clip Shadow on Desk
+  const sinPhi = Math.sin(rollAngle);
+  const cosPhi = Math.cos(rollAngle);
+  const barrelStart = -L / 2 + 38;
+  const capTipX = -L / 2 - 6;
+  const clipStartX = capTipX + 8;
+  const clipEndX = barrelStart + 16;
+  const clipYOffset = -(W / 2 + 1.8) * cosPhi;
+  ctx.beginPath();
+  ctx.rect(clipStartX + 4, clipYOffset - 1.5, clipEndX - clipStartX - 6, 3);
+  ctx.fill();
   ctx.restore();
 
-  // Ambient Occlusion Contact Shadow
-  if (!isFalling) {
-    ctx.fillStyle = "rgba(10, 5, 0, 0.32)";
+  // Ambient Occlusion Contact Shadow (fades out as pen elevates in Z)
+  if (!isFalling && z < 2.5) {
+    const contactAlpha = Math.max(0, 0.32 * (1 - z / 2.5));
+    ctx.fillStyle = "rgba(10, 5, 0, " + contactAlpha + ")";
     roundRect(ctx, -L / 2 - 2, -W / 2 + 1.2, L + 2, W - 1, (W - 1) / 2);
     ctx.fill();
   }
 
+  // Clip 3D depth layering:
+  // sinPhi: > -0.15 means clip faces viewer (ON TOP of barrel); < -0.15 means faces desk (UNDER barrel)
+  const isClipBehind = sinPhi < -0.15;
+
+  const drawClipShape = (isOnTop) => {
+    const clipYCenter = -(W / 2) * cosPhi;
+    const profileRatio = Math.abs(cosPhi);
+    const clipThickness = 2.4 + (1 - profileRatio) * 1.4;
+    const clipTop = clipYCenter - clipThickness / 2 - (isOnTop ? 0 : 0.6 * cosPhi);
+
+    // When on top of barrel, draw drop shadow of clip ONTO the white cylinder
+    if (isOnTop) {
+      ctx.save();
+      const barrelDropAlpha = Math.min(0.45, 0.22 + sinPhi * 0.22);
+      ctx.fillStyle = "rgba(0, 0, 0, " + barrelDropAlpha + ")";
+      ctx.beginPath();
+      const dropY = clipTop + 2.2 + sinPhi * 1.5;
+      ctx.rect(clipStartX + 6, dropY, clipEndX - clipStartX - 8, clipThickness);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    const clipGrad = ctx.createLinearGradient(0, clipTop, 0, clipTop + clipThickness);
+    if (isOnTop) {
+      clipGrad.addColorStop(0, shade(capHue, Math.round(20 + sinPhi * 25)));
+      clipGrad.addColorStop(0.35, shade(capHue, Math.round(45 + sinPhi * 30)));
+      clipGrad.addColorStop(0.7, shade(capHue, Math.round(10 - profileRatio * 15)));
+      clipGrad.addColorStop(1, shade(capHue, -35));
+    } else {
+      clipGrad.addColorStop(0, shade(capHue, -40));
+      clipGrad.addColorStop(1, shade(capHue, -65));
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(clipStartX, clipTop + clipThickness * 0.5);
+    ctx.lineTo(clipStartX + 4, clipTop);
+    ctx.lineTo(clipEndX - 3, clipTop);
+    ctx.lineTo(clipEndX, clipTop + clipThickness * 0.5);
+    ctx.lineTo(clipEndX - 2, clipTop + clipThickness);
+    ctx.lineTo(clipStartX + 4, clipTop + clipThickness);
+    ctx.closePath();
+    ctx.fillStyle = clipGrad;
+    ctx.fill();
+
+    ctx.strokeStyle = isOnTop ? shade(capHue, -30) : shade(capHue, -70);
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+  };
+
+  // If clip is pointing down towards desk, draw it under the barrel
+  if (isClipBehind) {
+    drawClipShape(false);
+  }
+
   // ================= 2. REYNOLDS 045 OFF-WHITE BARREL =================
-  // Barrel span: from cap collar (-L/2 + 38) to rear plug (L/2)
-  const barrelStart = -L / 2 + 38;
   const barrelEnd = L / 2;
   const barrelLen = barrelEnd - barrelStart;
 
@@ -167,18 +243,22 @@ export function drawPen(ctx, pen) {
   ctx.stroke();
 
   // ================= 3. AUTHENTIC REYNOLDS 045 TYPOGRAPHY IMPRINT =================
-  ctx.save();
-  ctx.fillStyle = textHue;
-  ctx.font = "bold 4.2px sans-serif";
-  ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
-  ctx.letterSpacing = "0.5px";
-  // Subtly stamp on barrel
-  ctx.fillText("045 REYNOLDS", barrelStart + 8, -0.4);
-  ctx.font = "italic 3.2px sans-serif";
-  ctx.fillStyle = "#8A2A2A";
-  ctx.fillText("FINE CARBURE.", barrelStart + 43, -0.4);
-  ctx.restore();
+  const textVisibility = Math.cos(rollAngle - Math.PI / 2);
+  if (textVisibility > 0.05) {
+    ctx.save();
+    ctx.globalAlpha = textVisibility;
+    ctx.fillStyle = textHue;
+    ctx.font = "bold 4.2px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.letterSpacing = "0.5px";
+    const textYOffset = -0.4 - Math.sin(rollAngle - Math.PI / 2) * 2.2;
+    ctx.fillText("045 REYNOLDS", barrelStart + 8, textYOffset);
+    ctx.font = "italic 3.2px sans-serif";
+    ctx.fillStyle = "#8A2A2A";
+    ctx.fillText("FINE CARBURE.", barrelStart + 43, textYOffset);
+    ctx.restore();
+  }
 
   // ================= 4. GLOSSY METALLIC COLLAR RING =================
   const collarX = barrelStart - 3.5;
@@ -196,8 +276,6 @@ export function drawPen(ctx, pen) {
   ctx.fill();
 
   // ================= 5. ICONIC REYNOLDS LONG AERODYNAMIC CAP =================
-  // Cap body: from -L/2 - 6 to collarX
-  const capTipX = -L / 2 - 6;
   const capBaseX = collarX;
   const capGrad = ctx.createLinearGradient(0, -W / 2 - 0.5, 0, W / 2 + 0.5);
   capGrad.addColorStop(0, shade(capHue, -35));
@@ -224,48 +302,10 @@ export function drawPen(ctx, pen) {
   ctx.lineWidth = 0.8;
   line(ctx, capTipX + 2, 0, capBaseX - 2, 0);
 
-  // ================= 6. LONG REYNOLDS POCKET CLIP =================
-  // The clip originates near the top of the cap and extends down over the white barrel
-  const clipStartX = capTipX + 8;
-  const clipEndX = barrelStart + 16; // Overhangs 16px past the cap onto the barrel
-  const clipY = -W / 2 - 3.2; // Rests along top ridge
-  const clipThickness = 2.4;
-
-  // Clip drop shadow onto the barrel/cap
-  ctx.save();
-  ctx.fillStyle = "rgba(0, 0, 0, 0.38)";
-  ctx.beginPath();
-  ctx.moveTo(clipStartX + 4, clipY + 3.2);
-  ctx.lineTo(clipEndX, clipY + 3.2);
-  ctx.lineTo(clipEndX - 2, clipY + 4.8);
-  ctx.lineTo(clipStartX + 4, clipY + 4.8);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-
-  // Clip body
-  const clipGrad = ctx.createLinearGradient(0, clipY, 0, clipY + clipThickness);
-  clipGrad.addColorStop(0, shade(capHue, 35));
-  clipGrad.addColorStop(0.4, shade(capHue, 55));
-  clipGrad.addColorStop(0.7, shade(capHue, 5));
-  clipGrad.addColorStop(1, shade(capHue, -35));
-
-  ctx.beginPath();
-  ctx.moveTo(clipStartX, clipY + 1.8);
-  ctx.lineTo(clipStartX + 4, clipY);
-  ctx.lineTo(clipEndX - 3, clipY);
-  ctx.lineTo(clipEndX, clipY + 1.2); // angled tip
-  ctx.lineTo(clipEndX - 2, clipY + clipThickness);
-  ctx.lineTo(clipStartX + 4, clipY + clipThickness);
-  ctx.lineTo(clipStartX, clipY + 1.8);
-  ctx.closePath();
-  ctx.fillStyle = clipGrad;
-  ctx.fill();
-
-  // Clip edge bevel stroke
-  ctx.strokeStyle = shade(capHue, -40);
-  ctx.lineWidth = 0.5;
-  ctx.stroke();
+  // ================= 6. LONG REYNOLDS POCKET CLIP (ON TOP) =================
+  if (!isClipBehind) {
+    drawClipShape(true);
+  }
 
   ctx.restore();
 }

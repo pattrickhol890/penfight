@@ -61,6 +61,11 @@ function makePen(x, y, owner, id) {
     falling: false,
     fallProgress: 0,
     fallDir: { x: 0, y: 0 },
+    // 3D Z-axis height & axial roll dynamics
+    rollAngle: 0, // 3D axial angle around cylinder barrel (rests flush on desk)
+    rollOmega: 0, // axial roll velocity
+    z: 0, // vertical height above desk surface (px)
+    vz: 0, // vertical velocity in Z-axis
   };
   return b;
 }
@@ -119,11 +124,13 @@ export default function PenFight() {
   useEffect(() => {
     if (!mp.opponentFlick || mode !== "online") return;
     const st = g.current;
-    const { penId, v, omega, ratio } = mp.opponentFlick;
+    const { penId, v, omega, ratio, vz, rollOmega } = mp.opponentFlick;
     const pen = st.pens.find((p) => p.penData.id === penId);
     if (pen) {
       Body.setVelocity(pen, v);
       Body.setAngularVelocity(pen, omega);
+      if (vz !== undefined) pen.penData.vz = vz;
+      if (rollOmega !== undefined) pen.penData.rollOmega = rollOmega;
       sound.play("flick", ratio || 0.8);
       st.turnState = "moving";
       st.moveStart = performance.now();
@@ -162,6 +169,8 @@ export default function PenFight() {
           Body.setAngle(localPen, pData.angle);
           Body.setVelocity(localPen, { x: 0, y: 0 });
           Body.setAngularVelocity(localPen, 0);
+          if (pData.rollAngle !== undefined) localPen.penData.rollAngle = pData.rollAngle;
+          if (pData.z !== undefined) localPen.penData.z = pData.z;
         }
       });
     }
@@ -345,6 +354,14 @@ export default function PenFight() {
       let omega = (cross / I) * CFG.spinFactor * torqueMultiplier;
       omega = Math.max(-CFG.maxOmega, Math.min(CFG.maxOmega, omega));
 
+      // 3D Z-Axis Elevation & Roll Spin when striking the clip / cap end
+      const rLocalX = r.x * axis.x + r.y * axis.y;
+      const isClipEnd = rLocalX < -CFG.penLen * 0.12;
+      const clipLeverage = isClipEnd ? 1.0 : Math.max(0.3, leverRatio);
+      best.penData.vz = Math.min(3.2, ratio * 2.6 * clipLeverage);
+      const rollFlick = (dir.y * axis.x - dir.x * axis.y) * ratio * 0.45;
+      best.penData.rollOmega = rollFlick + (cross / I) * 0.35;
+
       Body.setVelocity(best, v);
       Body.setAngularVelocity(best, omega);
       sound.play("flick", ratio);
@@ -386,6 +403,8 @@ export default function PenFight() {
           y: p.position.y,
           angle: p.angle,
           owner: p.penData.owner,
+          rollAngle: p.penData.rollAngle,
+          z: p.penData.z,
         }));
         mpRef.current.sendSync({
           pens: snapshot,
@@ -400,12 +419,21 @@ export default function PenFight() {
 
     const checkRest = (now) => {
       const st = g.current;
-      const moving = st.pens.some((p) => speedOf(p) > CFG.restThreshold || Math.abs(p.angularVelocity) > 0.035);
+      const moving = st.pens.some(
+        (p) =>
+          speedOf(p) > CFG.restThreshold ||
+          Math.abs(p.angularVelocity) > 0.035 ||
+          (p.penData && (Math.abs(p.penData.vz) > 0.15 || Math.abs(p.penData.rollOmega) > 0.04))
+      );
       const timedOut = now - st.moveStart > CFG.maxMovingMs;
       if (!moving || timedOut) {
         st.pens.forEach((p) => {
           Body.setVelocity(p, { x: 0, y: 0 });
           Body.setAngularVelocity(p, 0);
+          if (p.penData) {
+            p.penData.vz = 0;
+            p.penData.rollOmega = 0;
+          }
         });
         if (st.mode === "online") {
           // In online mode, only the player whose turn it was ends the turn & broadcasts sync!
@@ -475,14 +503,65 @@ export default function PenFight() {
             nextVy *= 0.6;
           }
 
-          Body.setVelocity(pen, { x: nextVx, y: nextVy });
+          // 3D Axial Rolling & Ground Cam Lift (Z-axis mechanics):
+          const pd = pen.penData;
+          if (pd.rollAngle === undefined) pd.rollAngle = 0;
+          if (pd.rollOmega === undefined) pd.rollOmega = 0;
+          if (pd.z === undefined) pd.z = 0;
+          if (pd.vz === undefined) pd.vz = 0;
 
-          // Rolling Cam Effect: Protruding clip induces subtle torque oscillation as pen rolls
           const rollSpeed = Math.abs(vRoll);
-          if (rollSpeed > 0.25) {
-            const clipTorque = Math.sin(ang * 2) * 0.0006 * rollSpeed;
-            pen.torque += clipTorque;
+          const radius = CFG.penW / 2;
+          const targetRollOmega = vRoll / radius;
+
+          // Rolling contact drives cylinder roll spin
+          if (pd.z < 1.0) {
+            pd.rollOmega = pd.rollOmega * 0.82 + targetRollOmega * 0.18;
+          } else {
+            // Airborne rotational damping
+            pd.rollOmega *= 0.985;
           }
+
+          // Advance 3D axial roll angle
+          pd.rollAngle = (pd.rollAngle + pd.rollOmega) % (Math.PI * 2);
+
+          // Cam Ground Lift: protruding clip raises cap when rotating into desk
+          const sinPhi = Math.sin(pd.rollAngle);
+          const cosPhi = Math.cos(pd.rollAngle);
+          // Desk is at z=0; when sinPhi < -0.15, the protruding clip pushes up the cap
+          const liftZ = sinPhi < -0.15 ? Math.max(0, -sinPhi * CFG.clipHeight3D - 0.4) : 0;
+
+          // Rolling cam resistance & bistable settling:
+          // Rolling over the clip requires extra kinetic energy to elevate the pen;
+          // if rolling slowly, the cam pushes back (slope = -cosPhi), settling onto its flat side!
+          if (sinPhi < -0.2 && rollSpeed < 1.5) {
+            const camSlope = -cosPhi;
+            pd.rollOmega -= camSlope * 0.035;
+            nextVx -= rx * camSlope * 0.06;
+            nextVy -= ry * camSlope * 0.06;
+          }
+
+          // Cam Bump Hop:
+          // When rolling fast across the desk and the clip smacks into the wood,
+          // it pops the pen up in the Z-axis with a bounce sound!
+          if (sinPhi < -0.75 && pd.z <= liftZ + 0.3 && pd.vz <= 0 && rollSpeed > 0.8) {
+            pd.vz = Math.min(3.2, rollSpeed * 0.5);
+            if (rollSpeed > 1.6) sound.play("clack", Math.min(0.35, rollSpeed / 12));
+          }
+
+          // Vertical Z Gravity & Floor Collision
+          pd.vz -= CFG.gravityZ;
+          pd.z += pd.vz;
+          if (pd.z <= liftZ) {
+            pd.z = liftZ;
+            if (pd.vz < -0.8) {
+              sound.play("clack", Math.min(0.42, -pd.vz / 5.5));
+            }
+            pd.vz = -pd.vz * CFG.bounceZ;
+            if (Math.abs(pd.vz) < 0.2) pd.vz = 0;
+          }
+
+          Body.setVelocity(pen, { x: nextVx, y: nextVy });
 
           // Angular surface resistance
           pen.angularVelocity *= (1 - CFG.angularDamping);
@@ -637,6 +716,16 @@ export default function PenFight() {
       let omega = (cross / I) * CFG.spinFactor * torqueMultiplier;
       omega = Math.max(-CFG.maxOmega, Math.min(CFG.maxOmega, omega));
 
+      // 3D Z-Axis Elevation & Roll Spin when striking the clip / cap end:
+      const penUx = Math.cos(pen.angle);
+      const penUy = Math.sin(pen.angle);
+      const rLocalX = r.x * penUx + r.y * penUy;
+      const isClipEnd = rLocalX < -CFG.penLen * 0.12;
+      const clipLeverage = isClipEnd ? 1.0 : Math.max(0.3, leverRatio);
+      pen.penData.vz = Math.min(3.5, ratio * 3.0 * clipLeverage);
+      const rollFlick = (dir.y * penUx - dir.x * penUy) * ratio * 0.55;
+      pen.penData.rollOmega = rollFlick + (cross / I) * 0.4;
+
       Body.setVelocity(pen, v);
       Body.setAngularVelocity(pen, omega);
       sound.play("flick", ratio);
@@ -652,6 +741,8 @@ export default function PenFight() {
           omega,
           ratio,
           grab,
+          vz: pen.penData.vz,
+          rollOmega: pen.penData.rollOmega,
         });
       }
     };
