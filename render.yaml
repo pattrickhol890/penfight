@@ -1,4 +1,4 @@
-﻿services:
+services:
   - type: web
     name: penfight-backend
     runtime: python
@@ -12,3 +12,27 @@
         value: penfight
       - key: CORS_ORIGINS
         value: "*"
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+
+  - type: web
+    name: penfight-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: yarn && yarn build
+    staticPublishPath: ./build
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: REACT_APP_BACKEND_URL
+        fromService:
+          type: web
+          name: penfight-backend
+          property: host
+      - key: REACT_APP_GOOGLE_CLIENT_ID
+        sync: false
+

@@ -1,4 +1,6 @@
 from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Header, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -547,4 +549,25 @@ logger = logging.getLogger(__name__)
 async def shutdown_db_client():
     if client:
         client.close()
+
+
+# Serve built React frontend if available (unified full-stack deployment)
+build_dir = ROOT_DIR.parent / "frontend" / "build"
+if build_dir.exists():
+    static_dir = build_dir / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        if full_path.startswith("api") or full_path.startswith("ws"):
+            raise HTTPException(status_code=404, detail="Endpoint not found")
+        target = build_dir / full_path
+        if target.is_file():
+            return FileResponse(str(target))
+        index_file = build_dir / "index.html"
+        if index_file.is_file():
+            return FileResponse(str(index_file))
+        raise HTTPException(status_code=404, detail="Frontend build not found")
+
 
