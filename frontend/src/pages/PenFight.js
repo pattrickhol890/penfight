@@ -17,22 +17,41 @@ const speedOf = (b) => Math.hypot(b.velocity.x, b.velocity.y);
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 function makePen(x, y, owner, id) {
-  const b = Bodies.rectangle(x, y, CFG.penLen, CFG.penW, {
+  // 1. Main cylindrical barrel body
+  const main = Bodies.rectangle(x, y, CFG.penLen, CFG.penW, {
+    chamfer: { radius: CFG.penW / 2 },
+    density: 0.0035,
+    friction: 0.05,
+    restitution: 0.35,
+  });
+
+  // 2. Physical protruding pocket clip (attached on the cap end along top ridge)
+  const clipL = 36;
+  const clipW = 4.2;
+  const clip = Bodies.rectangle(
+    x - CFG.penLen * 0.22,
+    y - CFG.penW / 2 - clipW / 2 + 0.6,
+    clipL,
+    clipW,
+    {
+      chamfer: { radius: 1.5 },
+      density: 0.0075, // Denser plastic/metal clip adds real asymmetric mass
+      friction: 0.08,
+      restitution: 0.42,
+    }
+  );
+
+  // 3. Composite Rigid Body
+  const b = Body.create({
+    parts: [main, clip],
     frictionAir: CFG.frictionAir,
     friction: 0.05,
     frictionStatic: 0.3,
     restitution: 0.35,
-    density: 0.0035,
-    chamfer: { radius: CFG.penW / 2 },
     slop: 0.02,
   });
-  Body.setAngle(b, Math.PI / 2); // point toward opponent
 
-  // Asymmetrical Cap Inertia: Cap side carries extra mass and acts as a pivot
-  const I_uniform = (b.mass * (CFG.penLen ** 2 + CFG.penW ** 2)) / 12;
-  const offsetDist = CFG.penLen * CFG.comOffset;
-  const I_asymmetric = b.mass * (I_uniform / b.mass + offsetDist ** 2) * 1.35;
-  Body.setInertia(b, I_asymmetric);
+  Body.setAngle(b, Math.PI / 2); // point toward opponent
 
   b.penData = {
     owner,
@@ -432,6 +451,13 @@ export default function PenFight() {
             x: vSlideNew * ux + vRollNew * rx,
             y: vSlideNew * uy + vRollNew * ry,
           });
+
+          // Rolling Cam Effect: Protruding clip induces subtle torque oscillation as pen rolls
+          const rollSpeed = Math.abs(vRoll);
+          if (rollSpeed > 0.25) {
+            const clipTorque = Math.sin(ang * 2) * 0.0006 * rollSpeed;
+            pen.torque += clipTorque;
+          }
 
           // Angular surface resistance
           pen.angularVelocity *= (1 - CFG.angularDamping);
