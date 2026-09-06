@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Sparkles, User, Mail, Loader2, AlertCircle } from "lucide-react";
+import { X, Sparkles, User, Mail, Loader2, AlertCircle, ExternalLink } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
 const paper =
@@ -18,6 +18,14 @@ export default function GoogleAuthModal({ isOpen, onClose }) {
 
   const googleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
 
+  const isInIframe = (() => {
+    try {
+      return window.self !== window.top;
+    } catch {
+      return true;
+    }
+  })();
+
   // Initialize official Google Identity Services button if Client ID is configured
   useEffect(() => {
     if (!isOpen) return;
@@ -27,6 +35,10 @@ export default function GoogleAuthModal({ isOpen, onClose }) {
       try {
         window.google.accounts.id.initialize({
           client_id: googleClientId,
+          use_fedcm_for_prompt: true,
+          itp_support: true,
+          auto_select: false,
+          cancel_on_tap_outside: true,
           callback: async (res) => {
             setLoading(true);
             setError(null);
@@ -163,11 +175,40 @@ export default function GoogleAuthModal({ isOpen, onClose }) {
           </div>
 
           {activeTab === "google" ? (
-            <div className="flex flex-col items-center py-3">
+            <div className="flex flex-col items-center py-2">
+              {isInIframe && (
+                <div className="mb-3 w-full rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 font-mono flex flex-col gap-1.5 text-left">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-amber-700" />
+                    <span>Embedded Preview Frame Detected</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800/90 leading-tight">
+                    Google blocks popup communication inside an embedded preview iframe. Open in a full tab or use Instant Profile:
+                  </p>
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => window.open(window.location.href, "_blank")}
+                      className="flex items-center gap-1 rounded bg-amber-700 text-white px-2.5 py-1 text-[11px] font-bold hover:bg-amber-800 shadow-sm transition-transform active:scale-95"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      <span>Open in New Tab</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("instant")}
+                      className="rounded border border-amber-700/40 bg-white px-2.5 py-1 text-[11px] font-bold text-amber-900 hover:bg-amber-100/50 shadow-sm transition-transform active:scale-95"
+                    >
+                      Instant Profile
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {googleClientId ? (
                 <>
                   <div ref={googleBtnRef} className="my-2 min-h-[44px]" />
-                  <p className="mt-3 font-mono text-[11px] text-[#141E50]/70 text-center">
+                  <p className="mt-2 font-mono text-[11px] text-[#141E50]/70 text-center">
                     Sign in with your Google account to sync your game stats across devices.
                   </p>
                 </>
