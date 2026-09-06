@@ -1,4 +1,4 @@
-import { CFG, BOARD, INK } from "./constants";
+﻿import { CFG, BOARD, INK } from "./constants";
 
 /**
  * Procedural Teakwood Desk Canvas Renderer
@@ -66,13 +66,11 @@ export function drawBoard(ctx) {
   ctx.setLineDash([]);
 
   // 5. 3D Table Bevel Edge (Chalk / Oak border with specular top highlight)
-  // Dark bottom bevel
   ctx.strokeStyle = "rgba(10,25,18,0.85)";
   ctx.lineWidth = 3.5;
   roundRect(ctx, x + 2, y + 3, w - 4, h - 4, 13);
   ctx.stroke();
 
-  // Crisp top/inner chalk rim
   ctx.strokeStyle = "rgba(245,242,235,0.75)";
   ctx.lineWidth = 2;
   roundRect(ctx, x + 2, y + 2, w - 4, h - 4, 12);
@@ -82,15 +80,21 @@ export function drawBoard(ctx) {
 }
 
 /**
- * High-Fidelity 3D Pen Renderer
- * Features asymmetric cap weight, internal ink refill core, rubber grip, metallic nib,
- * and 3D directional cast shadows.
+ * Authentic Reynolds 045 Fine Carbure Pen Renderer
+ * Features:
+ * - Off-white matte cylindrical barrel with authentic "045 REYNOLDS FINE CARBURE" imprint.
+ * - Long aerodynamic blue/red cap with top chisel fin, glossy collar, and extended pocket clip.
+ * - Smooth rear tail plug.
+ * - Dynamic 3D directional cast shadow + contact ambient occlusion.
  */
 export function drawPen(ctx, pen) {
   const { position, angle } = pen;
-  const color = pen.penData.hue;
-  const L = CFG.penLen;
-  const W = CFG.penW;
+  const isP1 = pen.penData.owner === "p1";
+  const capHue = isP1 ? "#0A65C2" : "#D11A38"; // Reynolds Royal Blue vs Crimson Red
+  const collarHue = isP1 ? "#00A2E8" : "#FF3355"; // Cyan/Red metallic collar
+  const textHue = "#7A1C1C"; // Authentic Reynolds maroon/burgundy imprint
+  const L = CFG.penLen; // ~106px
+  const W = CFG.penW; // ~13px
   const fallProgress = pen.penData.fallProgress || 0;
   const isFalling = pen.penData.falling;
   const teeter = pen.penData.teeter || 0;
@@ -110,128 +114,158 @@ export function drawPen(ctx, pen) {
   }
 
   // ================= 1. DYNAMIC 3D DIRECTIONAL SHADOWS =================
-  const shadowAlpha = isFalling ? Math.max(0, 0.45 - fallProgress * 0.5) : 0.45;
-  const shadowDist = isFalling ? 8 + fallProgress * 35 : 5;
+  const shadowAlpha = isFalling ? Math.max(0, 0.45 - fallProgress * 0.5) : 0.42;
+  const shadowDist = isFalling ? 8 + fallProgress * 35 : 5.5;
   const shadowBlur = isFalling ? 10 + fallProgress * 20 : 7;
 
-  // Layer A: Soft Directional Cast Shadow (Light coming from top-left)
+  // Soft Directional Cast Shadow
   ctx.save();
-  ctx.shadowColor = `rgba(15, 8, 2, ${shadowAlpha})`;
+  ctx.shadowColor = "rgba(15, 8, 2, " + shadowAlpha + ")";
   ctx.shadowBlur = shadowBlur;
   ctx.shadowOffsetX = shadowDist * 0.6;
   ctx.shadowOffsetY = shadowDist;
-  ctx.fillStyle = "rgba(0,0,0,0.01)"; // Invisible carrier to project pure shadow
-  roundRect(ctx, -L / 2, -W / 2, L, W, W / 2);
+  ctx.fillStyle = "rgba(0,0,0,0.01)";
+  roundRect(ctx, -L / 2 - 4, -W / 2, L + 6, W, W / 2);
   ctx.fill();
   ctx.restore();
 
-  // Layer B: Ambient Occlusion Contact Shadow (Directly under pen)
+  // Ambient Occlusion Contact Shadow
   if (!isFalling) {
-    ctx.fillStyle = "rgba(10, 5, 0, 0.35)";
-    roundRect(ctx, -L / 2 + 3, -W / 2 + 1.5, L - 6, W - 1, (W - 1) / 2);
+    ctx.fillStyle = "rgba(10, 5, 0, 0.32)";
+    roundRect(ctx, -L / 2 - 2, -W / 2 + 1.2, L + 2, W - 1, (W - 1) / 2);
     ctx.fill();
   }
 
-  // ================= 2. TRANSLUCENT PEN BARREL & INTERNAL INK CORE =================
-  // A. Outer Barrel Cylinder (Multi-stop glossy plastic shader)
-  const barrelGrad = ctx.createLinearGradient(0, -W / 2, 0, W / 2);
-  barrelGrad.addColorStop(0, shade(color, -45));
-  barrelGrad.addColorStop(0.18, shade(color, -10));
-  barrelGrad.addColorStop(0.35, shade(color, 40)); // Specular cylinder glint
-  barrelGrad.addColorStop(0.5, shade(color, 55)); // Bright reflection line
-  barrelGrad.addColorStop(0.68, shade(color, 10));
-  barrelGrad.addColorStop(0.9, shade(color, -35));
-  barrelGrad.addColorStop(1, shade(color, -55));
+  // ================= 2. REYNOLDS 045 OFF-WHITE BARREL =================
+  // Barrel span: from cap collar (-L/2 + 38) to rear plug (L/2)
+  const barrelStart = -L / 2 + 38;
+  const barrelEnd = L / 2;
+  const barrelLen = barrelEnd - barrelStart;
 
-  roundRect(ctx, -L / 2, -W / 2, L, W, W / 2);
+  // Off-white cylindrical gradient (with realistic top highlight & bottom shade)
+  const barrelGrad = ctx.createLinearGradient(0, -W / 2, 0, W / 2);
+  barrelGrad.addColorStop(0, "#D6D4CE");
+  barrelGrad.addColorStop(0.2, "#E8E7E2");
+  barrelGrad.addColorStop(0.42, "#FFFFFF"); // Specular plastic glint
+  barrelGrad.addColorStop(0.65, "#EDECE7");
+  barrelGrad.addColorStop(0.85, "#DCDAD3");
+  barrelGrad.addColorStop(1, "#C2C0B8");
+
+  // Draw main white body
+  ctx.beginPath();
+  ctx.rect(barrelStart, -W / 2 + 0.3, barrelLen - 2, W - 0.6);
   ctx.fillStyle = barrelGrad;
   ctx.fill();
 
-  // B. Internal Ink Refill Tube (visible through semi-translucent barrel)
-  const tubeW = W * 0.42;
-  const tubeL = L * 0.62;
-  const tubeX = -L / 2 + 18;
-
-  // Clear Refill Polypropylene Tube
-  roundRect(ctx, tubeX, -tubeW / 2, tubeL, tubeW, tubeW / 2);
-  ctx.fillStyle = "rgba(245, 245, 240, 0.28)";
+  // Rear rounded tail plug
+  ctx.beginPath();
+  ctx.arc(barrelEnd - 2, 0, (W - 1) / 2, -Math.PI / 2, Math.PI / 2);
+  ctx.fillStyle = "#D6D4CE";
   ctx.fill();
+  ctx.strokeStyle = "#B5B3AA";
+  ctx.lineWidth = 0.6;
+  ctx.stroke();
 
-  // Liquid Ink Column inside Refill
-  const inkL = tubeL * 0.85;
-  roundRect(ctx, tubeX + 4, -tubeW / 2 + 0.6, inkL, tubeW - 1.2, (tubeW - 1.2) / 2);
-  ctx.fillStyle = shade(color, -15);
-  ctx.fill();
+  // ================= 3. AUTHENTIC REYNOLDS 045 TYPOGRAPHY IMPRINT =================
+  ctx.save();
+  ctx.fillStyle = textHue;
+  ctx.font = "bold 4.2px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.letterSpacing = "0.5px";
+  // Subtly stamp on barrel
+  ctx.fillText("045 REYNOLDS", barrelStart + 8, -0.4);
+  ctx.font = "italic 3.2px sans-serif";
+  ctx.fillStyle = "#8A2A2A";
+  ctx.fillText("FINE CARBURE.", barrelStart + 43, -0.4);
+  ctx.restore();
 
-  // ================= 3. TEXTURED RUBBER GRIP ZONE =================
-  const gripL = 22;
-  const gripX = L / 2 - 30;
-  // Grip base
-  roundRect(ctx, gripX, -W / 2, gripL, W, 2);
-  ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
-  ctx.fill();
-
-  // 4 Micro Grip Ridges
-  ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
-  for (let r = 0; r < 4; r++) {
-    const rx = gripX + 3 + r * 5;
-    line(ctx, rx, -W / 2 + 1, rx, W / 2 - 1);
-  }
-
-  // ================= 4. MACHINED METALLIC TIP & BALLPOINT NIB =================
-  // Metal Cone (Stainless Steel with specular taper)
-  const tipGrad = ctx.createLinearGradient(L / 2, -W / 2, L / 2, W / 2);
-  tipGrad.addColorStop(0, "#858C96");
-  tipGrad.addColorStop(0.4, "#E2E6EB");
-  tipGrad.addColorStop(0.6, "#CBD0D6");
-  tipGrad.addColorStop(1, "#666C74");
+  // ================= 4. GLOSSY METALLIC COLLAR RING =================
+  const collarX = barrelStart - 3.5;
+  const collarW = 3.5;
+  const collarGrad = ctx.createLinearGradient(0, -W / 2, 0, W / 2);
+  collarGrad.addColorStop(0, shade(collarHue, -40));
+  collarGrad.addColorStop(0.35, shade(collarHue, 35));
+  collarGrad.addColorStop(0.5, "#FFFFFF"); // Metallic glint
+  collarGrad.addColorStop(0.75, shade(collarHue, -15));
+  collarGrad.addColorStop(1, shade(collarHue, -50));
 
   ctx.beginPath();
-  ctx.moveTo(L / 2, -W / 2 + 0.6);
-  ctx.lineTo(L / 2 + 13, 0);
-  ctx.lineTo(L / 2, W / 2 - 0.6);
+  ctx.rect(collarX, -W / 2 - 0.2, collarW, W + 0.4);
+  ctx.fillStyle = collarGrad;
+  ctx.fill();
+
+  // ================= 5. ICONIC REYNOLDS LONG AERODYNAMIC CAP =================
+  // Cap body: from -L/2 - 6 to collarX
+  const capTipX = -L / 2 - 6;
+  const capBaseX = collarX;
+  const capGrad = ctx.createLinearGradient(0, -W / 2 - 0.5, 0, W / 2 + 0.5);
+  capGrad.addColorStop(0, shade(capHue, -35));
+  capGrad.addColorStop(0.2, shade(capHue, -5));
+  capGrad.addColorStop(0.42, shade(capHue, 45)); // Glossy cylindrical reflex
+  capGrad.addColorStop(0.55, shade(capHue, 60)); // Bright highlight
+  capGrad.addColorStop(0.75, shade(capHue, -10));
+  capGrad.addColorStop(1, shade(capHue, -45));
+
+  // Cap contour with aerodynamic top fin / chisel tip
+  ctx.beginPath();
+  ctx.moveTo(capBaseX, -W / 2 - 0.4);
+  ctx.lineTo(capTipX + 8, -W / 2 - 0.4);
+  ctx.lineTo(capTipX, -W / 4); // Chisel fin top
+  ctx.lineTo(capTipX, W / 4);
+  ctx.lineTo(capTipX + 8, W / 2 + 0.4);
+  ctx.lineTo(capBaseX, W / 2 + 0.4);
   ctx.closePath();
-  ctx.fillStyle = tipGrad;
-  ctx.fill();
-
-  // Dark Tungsten Ballpoint Bead
-  ctx.beginPath();
-  ctx.arc(L / 2 + 13, 0, 1.2, 0, Math.PI * 2);
-  ctx.fillStyle = "#1E2228";
-  ctx.fill();
-
-  // ================= 5. WEIGHTED CAP & CHROME POCKET CLIP =================
-  // Cap body (Heavier plastic end)
-  const capL = 16;
-  const capX = -L / 2 - 2;
-  const capGrad = ctx.createLinearGradient(0, -W / 2, 0, W / 2);
-  capGrad.addColorStop(0, shade(color, -35));
-  capGrad.addColorStop(0.35, shade(color, 25));
-  capGrad.addColorStop(0.5, shade(color, 45));
-  capGrad.addColorStop(1, shade(color, -45));
-
-  roundRect(ctx, capX, -W / 2, capL, W, 2.5);
   ctx.fillStyle = capGrad;
   ctx.fill();
 
-  // Cap Ring Accent
-  ctx.fillStyle = "#EAE6DC";
-  roundRect(ctx, capX + capL - 2.5, -W / 2 - 0.5, 2.5, W + 1, 1);
+  // Subtle fin highlight line
+  ctx.strokeStyle = "rgba(255,255,255,0.45)";
+  ctx.lineWidth = 0.8;
+  line(ctx, capTipX + 2, 0, capBaseX - 2, 0);
+
+  // ================= 6. LONG REYNOLDS POCKET CLIP =================
+  // The clip originates near the top of the cap and extends down over the white barrel
+  const clipStartX = capTipX + 8;
+  const clipEndX = barrelStart + 16; // Overhangs 16px past the cap onto the barrel
+  const clipY = -W / 2 - 3.2; // Rests along top ridge
+  const clipThickness = 2.4;
+
+  // Clip drop shadow onto the barrel/cap
+  ctx.save();
+  ctx.fillStyle = "rgba(0, 0, 0, 0.38)";
+  ctx.beginPath();
+  ctx.moveTo(clipStartX + 4, clipY + 3.2);
+  ctx.lineTo(clipEndX, clipY + 3.2);
+  ctx.lineTo(clipEndX - 2, clipY + 4.8);
+  ctx.lineTo(clipStartX + 4, clipY + 4.8);
+  ctx.closePath();
   ctx.fill();
+  ctx.restore();
 
-  // Chrome Pocket Clip (Stamped metal with clip shadow)
-  ctx.fillStyle = "rgba(0, 0, 0, 0.35)"; // Clip drop shadow
-  roundRect(ctx, -L / 2 + 6, -W / 2 - 2.5, 3, W + 5, 1.5);
-  ctx.fill();
+  // Clip body
+  const clipGrad = ctx.createLinearGradient(0, clipY, 0, clipY + clipThickness);
+  clipGrad.addColorStop(0, shade(capHue, 35));
+  clipGrad.addColorStop(0.4, shade(capHue, 55));
+  clipGrad.addColorStop(0.7, shade(capHue, 5));
+  clipGrad.addColorStop(1, shade(capHue, -35));
 
-  const clipGrad = ctx.createLinearGradient(-L / 2 + 5, -W / 2, -L / 2 + 9, W / 2);
-  clipGrad.addColorStop(0, "#F2EFE9");
-  clipGrad.addColorStop(0.5, "#D8D2C4");
-  clipGrad.addColorStop(1, "#A09A8C");
-
-  roundRect(ctx, -L / 2 + 5, -W / 2 - 2, 2.5, W + 4, 1.5);
+  ctx.beginPath();
+  ctx.moveTo(clipStartX, clipY + 1.8);
+  ctx.lineTo(clipStartX + 4, clipY);
+  ctx.lineTo(clipEndX - 3, clipY);
+  ctx.lineTo(clipEndX, clipY + 1.2); // angled tip
+  ctx.lineTo(clipEndX - 2, clipY + clipThickness);
+  ctx.lineTo(clipStartX + 4, clipY + clipThickness);
+  ctx.lineTo(clipStartX, clipY + 1.8);
+  ctx.closePath();
   ctx.fillStyle = clipGrad;
   ctx.fill();
+
+  // Clip edge bevel stroke
+  ctx.strokeStyle = shade(capHue, -40);
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
 
   ctx.restore();
 }
@@ -330,5 +364,5 @@ function shade(hex, percent) {
   r = Math.min(255, Math.max(0, r));
   g = Math.min(255, Math.max(0, g));
   b = Math.min(255, Math.max(0, b));
-  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
