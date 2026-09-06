@@ -19,15 +19,30 @@ const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 function makePen(x, y, owner, id) {
   const b = Bodies.rectangle(x, y, CFG.penLen, CFG.penW, {
     frictionAir: CFG.frictionAir,
-    friction: 0.08,
-    frictionStatic: 0.5,
-    restitution: 0.32,
-    density: 0.004,
+    friction: 0.05,
+    frictionStatic: 0.3,
+    restitution: 0.35,
+    density: 0.0035,
     chamfer: { radius: CFG.penW / 2 },
     slop: 0.02,
   });
   Body.setAngle(b, Math.PI / 2); // point toward opponent
-  b.penData = { owner, hue: owner === "p1" ? INK.p1 : INK.p2, id: id || Math.random().toString(36).slice(2) };
+
+  // Asymmetrical Cap Inertia: Cap side carries extra mass and acts as a pivot
+  const I_uniform = (b.mass * (CFG.penLen ** 2 + CFG.penW ** 2)) / 12;
+  const offsetDist = CFG.penLen * CFG.comOffset;
+  const I_asymmetric = b.mass * (I_uniform / b.mass + offsetDist ** 2) * 1.35;
+  Body.setInertia(b, I_asymmetric);
+
+  b.penData = {
+    owner,
+    hue: owner === "p1" ? INK.p1 : INK.p2,
+    id: id || Math.random().toString(36).slice(2),
+    teeter: 0,
+    falling: false,
+    fallProgress: 0,
+    fallDir: { x: 0, y: 0 },
+  };
   return b;
 }
 
@@ -195,19 +210,68 @@ export default function PenFight() {
       if (!st.pens.length) return;
       const remaining = [];
       let changed = false;
+
       for (const pen of st.pens) {
         const { x, y } = pen.position;
-        if (x < BOARD.x || x > BOARD.x + BOARD.w || y < BOARD.y || y > BOARD.y + BOARD.h) {
-          World.remove(engine.world, pen);
-          changed = true;
-          sound.play("thud");
-        } else remaining.push(pen);
+        const ang = pen.angle;
+        const ux = Math.cos(ang);
+        const uy = Math.sin(ang);
+
+        // Asymmetrical Center of Mass (shifted towards the cap)
+        const comX = x - ux * (CFG.comOffset * CFG.penLen);
+        const comY = y - uy * (CFG.comOffset * CFG.penLen);
+
+        // Check if Center of Mass passed outside the desk boundaries
+        const isComOut =
+          comX < BOARD.x ||
+          comX > BOARD.x + BOARD.w ||
+          comY < BOARD.y ||
+          comY > BOARD.y + BOARD.h;
+
+        // Check if extremities overhang the edge for teetering wobbles
+        const nibX = x + ux * (CFG.penLen / 2);
+        const nibY = y + uy * (CFG.penLen / 2);
+        const capX = x - ux * (CFG.penLen / 2);
+        const capY = y - uy * (CFG.penLen / 2);
+
+        const isOverEdge =
+          nibX < BOARD.x || nibX > BOARD.x + BOARD.w || nibY < BOARD.y || nibY > BOARD.y + BOARD.h ||
+          capX < BOARD.x || capX > BOARD.x + BOARD.w || capY < BOARD.y || capY > BOARD.y + BOARD.h;
+
+        if (pen.penData.falling) {
+          pen.penData.fallProgress += 0.045;
+          if (pen.penData.fallProgress >= 1.0) {
+            World.remove(engine.world, pen);
+            changed = true;
+            sound.play("thud");
+          } else {
+            remaining.push(pen);
+          }
+        } else if (isComOut) {
+          // Center of mass lost equilibrium: initiate 3D tumble off the table edge!
+          pen.penData.falling = true;
+          pen.penData.fallProgress = 0.05;
+          pen.penData.fallDir = {
+            x: comX < BOARD.x ? -1 : comX > BOARD.x + BOARD.w ? 1 : 0,
+            y: comY < BOARD.y ? -1 : comY > BOARD.y + BOARD.h ? 1 : 0,
+          };
+          Body.setVelocity(pen, {
+            x: pen.velocity.x * 0.35 + pen.penData.fallDir.x * 1.6,
+            y: pen.velocity.y * 0.35 + pen.penData.fallDir.y * 1.6,
+          });
+          remaining.push(pen);
+        } else {
+          // Stable on table (record teeter wobble)
+          pen.penData.teeter = isOverEdge ? 0.35 : 0;
+          remaining.push(pen);
+        }
       }
+
       if (changed) {
         st.pens = remaining;
         setScores({
-          p1: remaining.filter((p) => p.penData.owner === "p1").length,
-          p2: remaining.filter((p) => p.penData.owner === "p2").length,
+          p1: remaining.filter((p) => p.penData.owner === "p1" && !p.penData.falling).length,
+          p2: remaining.filter((p) => p.penData.owner === "p2" && !p.penData.falling).length,
         });
       }
     };
@@ -344,6 +408,35 @@ export default function PenFight() {
     const loop = (now) => {
       const st = g.current;
       if (st.phase === "playing" || st.phase === "gameover") {
+        // 1. Anisotropic Rolling vs Sliding Friction & Angular Resistance
+        for (const pen of st.pens) {
+          if (pen.penData.falling) continue;
+          const ang = pen.angle;
+          const ux = Math.cos(ang);
+          const uy = Math.sin(ang);
+          const rx = -uy;
+          const ry = ux;
+
+          const vx = pen.velocity.x;
+          const vy = pen.velocity.y;
+
+          // Project velocity into sliding (along barrel) and rolling (across width)
+          const vSlide = vx * ux + vy * uy;
+          const vRoll = vx * rx + vy * ry;
+
+          // Apply physical damping separately
+          const vSlideNew = vSlide * (1 - CFG.slideFriction);
+          const vRollNew = vRoll * (1 - CFG.rollFriction);
+
+          Body.setVelocity(pen, {
+            x: vSlideNew * ux + vRollNew * rx,
+            y: vSlideNew * uy + vRollNew * ry,
+          });
+
+          // Angular surface resistance
+          pen.angularVelocity *= (1 - CFG.angularDamping);
+        }
+
         Engine.update(engine, 16.666);
         handleEliminations();
         if (st.turnState === "moving") checkRest(now);

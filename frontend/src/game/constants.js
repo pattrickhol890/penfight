@@ -2,15 +2,20 @@ export const CFG = {
   W: 900,
   H: 600,
   penLen: 106,
-  penW: 12.5,
+  penW: 13,
   pensPerSide: 4,
   maxDrag: 160,
-  maxSpeed: 21,
-  frictionAir: 0.045,
+  maxSpeed: 22,
+  frictionAir: 0.015, // Base air friction (fine-tuned by anisotropic friction loop)
+  rollFriction: 0.012, // Low resistance when rolling across cylinder width
+  slideFriction: 0.048, // High resistance when sliding along pen length
+  angularDamping: 0.035, // Natural rotational decay on wooden desk
+  capMassRatio: 1.35, // Cap end is 35% heavier than nib end
+  comOffset: 0.12, // Center of mass shifted 12% towards the cap (-x in local coords)
   restThreshold: 0.12,
   maxMovingMs: 6500,
-  spinFactor: 0.6,
-  maxOmega: 0.45,
+  spinFactor: 0.72,
+  maxOmega: 0.5,
   zoomAmt: 0.18,
   zoomMin: 0.82,
 };
