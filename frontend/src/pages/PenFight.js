@@ -11,6 +11,12 @@ import GameOverModal from "../components/game/GameOverModal";
 import RotateOverlay from "../components/game/RotateOverlay";
 import TableJoystick from "../components/game/TableJoystick";
 import { useMultiplayer } from "../hooks/useMultiplayer";
+import {
+  isMobileDevice,
+  isPortraitMode,
+  requestFullscreenAndLockLandscape,
+  exitFullscreenAndUnlockOrientation,
+} from "../game/fullscreenOrientation";
 
 const { Engine, World, Bodies, Body, Query, Events } = Matter;
 const API = `${process.env.REACT_APP_BACKEND_URL || ""}/api`;
@@ -118,6 +124,84 @@ export default function PenFight() {
     setViewAngle(0);
     viewAngleRef.current = 0;
   };
+
+  const [isForcedLandscape, setIsForcedLandscape] = useState(false);
+  const isForcedLandscapeRef = useRef(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isPortrait, setIsPortrait] = useState(() => isPortraitMode());
+
+  const handleEnterFullscreenLandscape = async () => {
+    await requestFullscreenAndLockLandscape();
+    setIsFullscreen(true);
+    if (isPortraitMode()) {
+      setIsForcedLandscape(true);
+      isForcedLandscapeRef.current = true;
+    }
+  };
+
+  const handleToggleFullscreen = async () => {
+    const isFs = !!(
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      document.msFullscreenElement
+    );
+    if (isFs || isFullscreen) {
+      await exitFullscreenAndUnlockOrientation();
+      setIsFullscreen(false);
+      setIsForcedLandscape(false);
+      isForcedLandscapeRef.current = false;
+    } else {
+      await handleEnterFullscreenLandscape();
+    }
+  };
+
+  useEffect(() => {
+    const handleResizeOrOrient = () => {
+      const portrait = isPortraitMode();
+      setIsPortrait(portrait);
+
+      // If physical device rotates to landscape, native landscape handles it
+      if (!portrait) {
+        setIsForcedLandscape(false);
+        isForcedLandscapeRef.current = false;
+      }
+    };
+
+    const handleFullscreenChange = () => {
+      const isFs = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement
+      );
+      setIsFullscreen(isFs);
+
+      if (!isFs) {
+        // Exited fullscreen: unlock orientation and turn off forced landscape
+        exitFullscreenAndUnlockOrientation();
+        setIsForcedLandscape(false);
+        isForcedLandscapeRef.current = false;
+      } else {
+        // Entered fullscreen on mobile: if in portrait, lock/force landscape
+        if (isPortraitMode() && isMobileDevice()) {
+          requestFullscreenAndLockLandscape();
+          setIsForcedLandscape(true);
+          isForcedLandscapeRef.current = true;
+        }
+      }
+    };
+
+    window.addEventListener("resize", handleResizeOrOrient);
+    window.addEventListener("orientationchange", handleResizeOrOrient);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+
+    return () => {
+      window.removeEventListener("resize", handleResizeOrOrient);
+      window.removeEventListener("orientationchange", handleResizeOrOrient);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+    };
+  }, []);
 
   const toggleAimMode = () => {
     setAimMode((prev) => {
@@ -623,11 +707,35 @@ export default function PenFight() {
     // ---- Pointer / touch input ----
     const wrap = wrapperRef.current;
     const getPoint = (e) => {
-      const r = wrap.getBoundingClientRect();
       const cx = e.touches ? e.touches[0].clientX : e.clientX;
       const cy = e.touches ? e.touches[0].clientY : e.clientY;
-      const rawX = (cx - r.left) * (CFG.W / r.width);
-      const rawY = (cy - r.top) * (CFG.H / r.height);
+      let rawX, rawY;
+
+      if (isForcedLandscapeRef.current && window.innerHeight > window.innerWidth) {
+        // In CSS 90-degree forced landscape:
+        // The container is rotated 90deg clockwise around the center of the screen.
+        const r = wrap.getBoundingClientRect();
+        const centerX = r.left + r.width / 2;
+        const centerY = r.top + r.height / 2;
+
+        const dx = cx - centerX;
+        const dy = cy - centerY;
+
+        // Inverse rotate by -90deg to map back to unrotated element space:
+        // (dx_local, dy_local) = (dy, -dx)
+        const localW = wrap.offsetWidth;
+        const localH = wrap.offsetHeight;
+        const localX = localW / 2 + dy;
+        const localY = localH / 2 - dx;
+
+        rawX = localX * (CFG.W / localW);
+        rawY = localY * (CFG.H / localH);
+      } else {
+        const r = wrap.getBoundingClientRect();
+        rawX = (cx - r.left) * (CFG.W / r.width);
+        rawY = (cy - r.top) * (CFG.H / r.height);
+      }
+
       const ang = viewAngleRef.current;
       if (!ang) return { x: rawX, y: rawY };
       const fitScale = getTableFitScale(ang);
@@ -894,16 +1002,55 @@ export default function PenFight() {
 
   return (
     <div
-      className="relative h-screen w-screen overflow-hidden select-none"
-      style={{ backgroundImage: `url(${ASSETS.desk})`, backgroundSize: "cover", backgroundPosition: "center" }}
+      className="overflow-hidden select-none"
+      style={
+        isForcedLandscape && isPortrait
+          ? {
+              position: "fixed",
+              left: "50%",
+              top: "50%",
+              width: "100vh",
+              height: "100vw",
+              transform: "translate(-50%, -50%) rotate(90deg)",
+              transformOrigin: "center center",
+              backgroundImage: `url(${ASSETS.desk})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }
+          : {
+              position: "relative",
+              width: "100vw",
+              height: "100vh",
+              backgroundImage: `url(${ASSETS.desk})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }
+      }
       data-testid="penfight-app"
     >
-      <RotateOverlay />
+      <RotateOverlay
+        isForcedLandscape={isForcedLandscape}
+        onEnterFullscreenLandscape={handleEnterFullscreenLandscape}
+      />
       <div className="absolute inset-0 bg-[#1a0f08]/45" />
 
       {/* Game canvas */}
       <div className="absolute inset-0 flex items-center justify-center p-0.5 sm:p-2">
-        <div ref={wrapperRef} className="relative w-full max-w-[min(99vw,calc(98vh*1.5))] aspect-[3/2]">
+        <div
+          ref={wrapperRef}
+          className="relative w-full aspect-[3/2]"
+          style={
+            isForcedLandscape && isPortrait
+              ? {
+                  maxWidth: "min(98vh, calc(96vw * 1.5))",
+                  maxHeight: "96%",
+                }
+              : {
+                  maxWidth: "min(99vw, calc(98vh * 1.5))",
+                  maxHeight: "98%",
+                }
+          }
+        >
           <canvas
             ref={canvasRef}
             width={CFG.W}
@@ -942,6 +1089,8 @@ export default function PenFight() {
               onToggleMute={toggleMute}
               onQuit={quitToMenu}
               mp={mp}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={handleToggleFullscreen}
             />
           )}
         </div>

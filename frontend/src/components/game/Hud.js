@@ -2,21 +2,45 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Volume2, VolumeX, LogOut, Globe, AlertTriangle, Maximize2, Minimize2, Flame, MoveUpRight, ArrowDownLeft } from "lucide-react";
 
-export default function Hud({ scores, turn, turnState, mode, difficulty, muted, power, aimMode, onToggleAimMode, onToggleMute, onQuit, mp }) {
-  const [isFullscreen, setIsFullscreen] = useState(false);
+export default function Hud({
+  scores,
+  turn,
+  turnState,
+  mode,
+  difficulty,
+  muted,
+  power,
+  aimMode,
+  onToggleAimMode,
+  onToggleMute,
+  onQuit,
+  mp,
+  isFullscreen: externalIsFullscreen,
+  onToggleFullscreen,
+}) {
+  const [localIsFullscreen, setLocalIsFullscreen] = useState(false);
+  const isFullscreen = externalIsFullscreen !== undefined ? externalIsFullscreen : localIsFullscreen;
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
     const handleFsChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      setLocalIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
     };
     document.addEventListener("fullscreenchange", handleFsChange);
-    return () => document.removeEventListener("fullscreenchange", handleFsChange);
+    document.addEventListener("webkitfullscreenchange", handleFsChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFsChange);
+      document.removeEventListener("webkitfullscreenchange", handleFsChange);
+    };
   }, []);
 
   const toggleFullscreen = () => {
+    if (onToggleFullscreen) {
+      onToggleFullscreen();
+      return;
+    }
     try {
-      if (!document.fullscreenElement) {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
         if (document.documentElement.requestFullscreen) {
           document.documentElement.requestFullscreen();
         } else if (document.documentElement.webkitRequestFullscreen) {
@@ -25,6 +49,8 @@ export default function Hud({ scores, turn, turnState, mode, difficulty, muted, 
       } else {
         if (document.exitFullscreen) {
           document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
         }
       }
     } catch (err) {

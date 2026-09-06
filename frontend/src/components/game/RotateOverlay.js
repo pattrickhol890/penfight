@@ -1,13 +1,13 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RotateCw, Maximize2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-export default function RotateOverlay() {
+export default function RotateOverlay({ isForcedLandscape, onEnterFullscreenLandscape }) {
   const [isPortraitMobile, setIsPortraitMobile] = useState(false);
 
   useEffect(() => {
     const checkOrientation = () => {
-      const isMobile = window.innerWidth <= 850 || /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
+      const isMobile = window.innerWidth <= 900 || /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
       const isPortrait = window.innerHeight > window.innerWidth;
       setIsPortraitMobile(isMobile && isPortrait);
     };
@@ -23,20 +23,27 @@ export default function RotateOverlay() {
   }, []);
 
   const handleFullscreen = () => {
-    try {
-      if (document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen();
-      } else if (document.documentElement.webkitRequestFullscreen) {
-        document.documentElement.webkitRequestFullscreen();
+    if (onEnterFullscreenLandscape) {
+      onEnterFullscreenLandscape();
+    } else {
+      try {
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen();
+        } else if (document.documentElement.webkitRequestFullscreen) {
+          document.documentElement.webkitRequestFullscreen();
+        }
+      } catch (e) {
+        console.warn(e);
       }
-    } catch (e) {
-      console.warn(e);
     }
   };
 
+  // Hide overlay if forced landscape is active or screen is already landscape
+  const showOverlay = isPortraitMobile && !isForcedLandscape;
+
   return (
     <AnimatePresence>
-      {isPortraitMobile && (
+      {showOverlay && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -56,15 +63,15 @@ export default function RotateOverlay() {
           </h2>
 
           <p className="mb-6 max-w-xs font-mono text-xs leading-relaxed text-[#F5F2EB]/80">
-            Pen Fight is designed for widescreen battle desks. Please turn your device sideways to play!
+            Pen Fight is designed for widescreen battle desks. Turn device sideways or tap below to auto-rotate!
           </p>
 
           <button
             onClick={handleFullscreen}
-            className="flex items-center gap-2 rounded-lg border-2 border-[#F5D76E] bg-[#F5D76E] px-4 py-2 font-mono text-xs font-bold uppercase tracking-wider text-[#141E50] shadow-md transition-transform active:scale-95"
+            className="flex items-center gap-2 rounded-xl border-2 border-[#F5D76E] bg-[#F5D76E] px-5 py-3 font-mono text-xs font-bold uppercase tracking-wider text-[#141E50] shadow-lg transition-transform active:scale-95 hover:scale-105"
           >
             <Maximize2 className="h-4 w-4" />
-            <span>Enter Fullscreen</span>
+            <span>Fullscreen Landscape</span>
           </button>
         </motion.div>
       )}
