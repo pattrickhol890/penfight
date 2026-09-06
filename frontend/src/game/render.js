@@ -138,6 +138,7 @@ export function drawPen(ctx, pen) {
   ctx.fillStyle = "rgba(0,0,0,0.01)";
   roundRect(ctx, -L / 2 - 4, -W / 2, L + 6, W, W / 2);
   ctx.fill();
+  ctx.restore();
 
   // Distinct Clip Shadow on Teakwood Desk
   // Roll angle is in [0, Math.PI]; sinPhi is strictly >= 0 (never negative Z)

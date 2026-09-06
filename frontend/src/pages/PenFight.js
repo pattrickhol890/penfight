@@ -447,6 +447,7 @@ export default function PenFight() {
     };
 
     const draw = () => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, CFG.W, CFG.H);
       drawBoard(ctx);
       const st = g.current;
