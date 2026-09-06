@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Matter from "matter-js";
 import axios from "axios";
-import { CFG, BOARD, INK, ASSETS, getTableFitScale } from "../game/constants";
+import { CFG, BOARD, INK, ASSETS, CANVAS_PAD, CANVAS_DIM, SUB_STEPS } from "../game/constants";
 import { sound } from "../game/sound";
 import { drawBoard, drawPen, drawAim } from "../game/render";
 import { Pen3DRenderer } from "../game/Pen3DRenderer";
@@ -318,7 +318,11 @@ export default function PenFight() {
   };
 
   useEffect(() => {
-    const engine = Engine.create();
+    const engine = Engine.create({
+      positionIterations: 16,
+      velocityIterations: 12,
+      constraintIterations: 4,
+    });
     engine.gravity.x = 0;
     engine.gravity.y = 0;
     g.current.engine = engine;
@@ -558,22 +562,20 @@ export default function PenFight() {
 
     const draw = () => {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, CFG.W, CFG.H);
+      ctx.clearRect(0, 0, CANVAS_DIM.w, CANVAS_DIM.h);
       const ang = viewAngleRef.current;
-      const fitScale = getTableFitScale(ang);
       ctx.save();
-      if (ang) {
-        ctx.translate(CFG.W / 2, CFG.H / 2);
-        ctx.rotate(ang);
-        ctx.scale(fitScale, fitScale);
-        ctx.translate(-CFG.W / 2, -CFG.H / 2);
-      }
+      // Center table in expanded drawing buffer and rotate around center (100% full scale):
+      ctx.translate(CANVAS_DIM.w / 2, CANVAS_DIM.h / 2);
+      if (ang) ctx.rotate(ang);
+      ctx.translate(-CFG.W / 2, -CFG.H / 2);
+
       drawBoard(ctx);
       const st = g.current;
 
       // Real 3D Meshy AI Pen Renderer (Three.js WebGL)
       if (pen3D && pen3D.loaded) {
-        pen3D.update(st.pens, ang, fitScale);
+        pen3D.update(st.pens, ang, 1.0);
       } else {
         // High-fidelity procedural 2D fallback
         for (const pen of st.pens) drawPen(ctx, pen);
@@ -600,102 +602,113 @@ export default function PenFight() {
     const loop = (now) => {
       const st = g.current;
       if (st.phase === "playing" || st.phase === "gameover") {
-        // 1. Anisotropic Rolling vs Sliding Friction & Angular Resistance
-        for (const pen of st.pens) {
-          if (pen.penData.falling) continue;
-          const ang = pen.angle;
-          const ux = Math.cos(ang);
-          const uy = Math.sin(ang);
-          const rx = -uy;
-          const ry = ux;
+        const subDt = 16.666 / SUB_STEPS;
+        const subSlideFriction = CFG.slideFriction / SUB_STEPS;
+        const subRollFriction = CFG.rollFriction / SUB_STEPS;
+        const subAngularDamping = CFG.angularDamping / SUB_STEPS;
+        const subGravityZ = CFG.gravityZ / SUB_STEPS;
 
-          const vx = pen.velocity.x;
-          const vy = pen.velocity.y;
+        for (let step = 0; step < SUB_STEPS; step++) {
+          // 1. Anisotropic Rolling vs Sliding Friction & Angular Resistance
+          for (const pen of st.pens) {
+            if (pen.penData.falling) continue;
+            const ang = pen.angle;
+            const ux = Math.cos(ang);
+            const uy = Math.sin(ang);
+            const rx = -uy;
+            const ry = ux;
 
-          // Project velocity into sliding (along barrel) and rolling (across width)
-          const vSlide = vx * ux + vy * uy;
-          const vRoll = vx * rx + vy * ry;
+            const vx = pen.velocity.x;
+            const vy = pen.velocity.y;
 
-          // Apply physical damping separately
-          const vSlideNew = vSlide * (1 - CFG.slideFriction);
-          const vRollNew = vRoll * (1 - CFG.rollFriction);
+            // Project velocity into sliding (along barrel) and rolling (across width)
+            const vSlide = vx * ux + vy * uy;
+            const vRoll = vx * rx + vy * ry;
 
-          let nextVx = vSlideNew * ux + vRollNew * rx;
-          let nextVy = vSlideNew * uy + vRollNew * ry;
+            // Apply physical damping separately
+            const vSlideNew = vSlide * (1 - subSlideFriction);
+            const vRollNew = vRoll * (1 - subRollFriction);
 
-          // Desk Static Friction Lock:
-          // If linear translation is small but pen is rotating (like a soft clip flick),
-          // the heavy barrel contact area stays locked to the desk while rotation whips freely!
-          const linearSpeed = Math.hypot(nextVx, nextVy);
-          if (linearSpeed < 0.45 && Math.abs(pen.angularVelocity) > 0.025) {
-            nextVx *= 0.6;
-            nextVy *= 0.6;
-          }
+            let nextVx = vSlideNew * ux + vRollNew * rx;
+            let nextVy = vSlideNew * uy + vRollNew * ry;
 
-          // 3D Axial Rolling & Solid Desk Contact (Strictly Z >= 0, No -Z Penetration):
-          const pd = pen.penData;
-          if (pd.rollAngle === undefined) pd.rollAngle = 0;
-          if (pd.rollOmega === undefined) pd.rollOmega = 0;
-          if (pd.z === undefined) pd.z = 0;
-          if (pd.vz === undefined) pd.vz = 0;
+            // Desk Static Friction Lock:
+            // If linear translation is small but pen is rotating (like a soft clip flick),
+            // the heavy barrel contact area stays locked to the desk while rotation whips freely!
+            const linearSpeed = Math.hypot(nextVx, nextVy);
+            if (linearSpeed < 0.45 && Math.abs(pen.angularVelocity) > 0.025) {
+              const lockFactor = Math.pow(0.6, 1 / SUB_STEPS);
+              nextVx *= lockFactor;
+              nextVy *= lockFactor;
+            }
 
-          const rollSpeed = Math.abs(vRoll);
-          const radius = CFG.penW / 2;
-          const targetRollOmega = (vRoll / radius) * 0.5;
+            // 3D Axial Rolling & Solid Desk Contact (Strictly Z >= 0, No -Z Penetration):
+            const pd = pen.penData;
+            if (pd.rollAngle === undefined) pd.rollAngle = 0;
+            if (pd.rollOmega === undefined) pd.rollOmega = 0;
+            if (pd.z === undefined) pd.z = 0;
+            if (pd.vz === undefined) pd.vz = 0;
 
-          // Rolling contact drives roll angle
-          if (pd.z < 0.6) {
-            pd.rollOmega = pd.rollOmega * 0.75 + targetRollOmega * 0.25;
-          } else {
-            pd.rollOmega *= 0.98;
-          }
+            const rollSpeed = Math.abs(vRoll);
+            const radius = CFG.penW / 2;
+            const targetRollOmega = (vRoll / radius) * 0.5;
 
-          pd.rollAngle += pd.rollOmega;
+            // Rolling contact drives roll angle
+            if (pd.z < 0.6) {
+              const omegaBlend = 0.25 / SUB_STEPS;
+              pd.rollOmega = pd.rollOmega * (1 - omegaBlend) + targetRollOmega * omegaBlend;
+            } else {
+              pd.rollOmega *= Math.pow(0.98, 1 / SUB_STEPS);
+            }
 
-          // SOLID WOOD DESK FLOOR CONSTRAINT:
-          // The desk is at Z=0. The clip cannot pass through the desk into -Z.
-          // When the clip strikes the table surface at rollAngle <= 0 or >= Math.PI:
-          if (pd.rollAngle <= 0) {
-            pd.rollAngle = 0;
-            if (Math.abs(pd.rollOmega) > 0.04) {
-              sound.play("clack", Math.min(0.35, Math.abs(pd.rollOmega) * 1.5));
-              // Fast impact on desk kicks cap up into +Z
-              if (rollSpeed > 0.6 && pd.z < 0.2) {
-                pd.vz = Math.min(3.0, rollSpeed * 0.6);
+            pd.rollAngle += pd.rollOmega / SUB_STEPS;
+
+            // SOLID WOOD DESK FLOOR CONSTRAINT:
+            // The desk is at Z=0. The clip cannot pass through the desk into -Z.
+            // When the clip strikes the table surface at rollAngle <= 0 or >= Math.PI:
+            if (pd.rollAngle <= 0) {
+              pd.rollAngle = 0;
+              if (Math.abs(pd.rollOmega) > 0.04) {
+                sound.play("clack", Math.min(0.35, Math.abs(pd.rollOmega) * 1.5));
+                // Fast impact on desk kicks cap up into +Z
+                if (rollSpeed > 0.6 && pd.z < 0.2) {
+                  pd.vz = Math.min(3.0, rollSpeed * 0.6);
+                }
               }
-            }
-            pd.rollOmega = -pd.rollOmega * 0.3; // Rebound off desk surface
-          } else if (pd.rollAngle >= Math.PI) {
-            pd.rollAngle = Math.PI;
-            if (Math.abs(pd.rollOmega) > 0.04) {
-              sound.play("clack", Math.min(0.35, Math.abs(pd.rollOmega) * 1.5));
-              // Fast impact on desk kicks cap up into +Z
-              if (rollSpeed > 0.6 && pd.z < 0.2) {
-                pd.vz = Math.min(3.0, rollSpeed * 0.6);
+              pd.rollOmega = -pd.rollOmega * 0.3; // Rebound off desk surface
+            } else if (pd.rollAngle >= Math.PI) {
+              pd.rollAngle = Math.PI;
+              if (Math.abs(pd.rollOmega) > 0.04) {
+                sound.play("clack", Math.min(0.35, Math.abs(pd.rollOmega) * 1.5));
+                // Fast impact on desk kicks cap up into +Z
+                if (rollSpeed > 0.6 && pd.z < 0.2) {
+                  pd.vz = Math.min(3.0, rollSpeed * 0.6);
+                }
               }
+              pd.rollOmega = -pd.rollOmega * 0.3; // Rebound off desk surface
             }
-            pd.rollOmega = -pd.rollOmega * 0.3; // Rebound off desk surface
+
+            // Vertical Z Gravity & Floor Collision (Z is strictly non-negative)
+            pd.vz -= subGravityZ;
+            pd.z += pd.vz / SUB_STEPS;
+            if (pd.z <= 0) {
+              pd.z = 0;
+              if (pd.vz < -0.8) {
+                sound.play("clack", Math.min(0.4, -pd.vz / 5.5));
+              }
+              pd.vz = -pd.vz * CFG.bounceZ;
+              if (Math.abs(pd.vz) < 0.18) pd.vz = 0;
+            }
+
+            Body.setVelocity(pen, { x: nextVx, y: nextVy });
+
+            // Angular surface resistance
+            pen.angularVelocity *= (1 - subAngularDamping);
           }
 
-          // Vertical Z Gravity & Floor Collision (Z is strictly non-negative)
-          pd.vz -= CFG.gravityZ;
-          pd.z += pd.vz;
-          if (pd.z <= 0) {
-            pd.z = 0;
-            if (pd.vz < -0.8) {
-              sound.play("clack", Math.min(0.4, -pd.vz / 5.5));
-            }
-            pd.vz = -pd.vz * CFG.bounceZ;
-            if (Math.abs(pd.vz) < 0.18) pd.vz = 0;
-          }
-
-          Body.setVelocity(pen, { x: nextVx, y: nextVy });
-
-          // Angular surface resistance
-          pen.angularVelocity *= (1 - CFG.angularDamping);
+          Engine.update(engine, subDt);
         }
 
-        Engine.update(engine, 16.666);
         handleEliminations();
         if (st.turnState === "moving") checkRest(now);
       }
@@ -738,7 +751,6 @@ export default function PenFight() {
 
       const ang = viewAngleRef.current;
       if (!ang) return { x: rawX, y: rawY };
-      const fitScale = getTableFitScale(ang);
       const rawDx = rawX - CFG.W / 2;
       const rawDy = rawY - CFG.H / 2;
       const cos = Math.cos(-ang);
@@ -746,8 +758,8 @@ export default function PenFight() {
       const unrotX = rawDx * cos - rawDy * sin;
       const unrotY = rawDx * sin + rawDy * cos;
       return {
-        x: CFG.W / 2 + unrotX / fitScale,
-        y: CFG.H / 2 + unrotY / fitScale,
+        x: CFG.W / 2 + unrotX,
+        y: CFG.H / 2 + unrotY,
       };
     };
     const setZoom = (z) => {
@@ -1053,10 +1065,15 @@ export default function PenFight() {
         >
           <canvas
             ref={canvasRef}
-            width={CFG.W}
-            height={CFG.H}
-            className="h-full w-full touch-none rounded-lg"
+            width={CANVAS_DIM.w}
+            height={CANVAS_DIM.h}
+            className="touch-none"
             style={{
+              position: "absolute",
+              left: `calc(-100% * ${CANVAS_PAD.x} / ${CFG.W})`,
+              top: `calc(-100% * ${CANVAS_PAD.y} / ${CFG.H})`,
+              width: `calc(100% * ${CANVAS_DIM.w} / ${CFG.W})`,
+              height: `calc(100% * ${CANVAS_DIM.h} / ${CFG.H})`,
               cursor: turnState === "aim" && (mode !== "online" || turn === mp.role) ? "grab" : "default",
               transformOrigin: "center center",
               transition: "transform 0.14s ease-out",
@@ -1066,10 +1083,15 @@ export default function PenFight() {
           />
           <canvas
             ref={webglCanvasRef}
-            width={CFG.W}
-            height={CFG.H}
-            className="absolute inset-0 h-full w-full pointer-events-none rounded-lg"
+            width={CANVAS_DIM.w}
+            height={CANVAS_DIM.h}
+            className="pointer-events-none"
             style={{
+              position: "absolute",
+              left: `calc(-100% * ${CANVAS_PAD.x} / ${CFG.W})`,
+              top: `calc(-100% * ${CANVAS_PAD.y} / ${CFG.H})`,
+              width: `calc(100% * ${CANVAS_DIM.w} / ${CFG.W})`,
+              height: `calc(100% * ${CANVAS_DIM.h} / ${CFG.H})`,
               transformOrigin: "center center",
               transition: "transform 0.14s ease-out",
               willChange: "transform",

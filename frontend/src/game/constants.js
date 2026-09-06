@@ -35,20 +35,24 @@ export const ASSETS = {
   desk: "https://images.unsplash.com/photo-1576092762791-dd9e2220abd1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwxfHxkYXJrJTIwd29vZGVuJTIwZGVzayUyMHRleHR1cmUlMjBmbGF0JTIwbGF5fGVufDB8fHx8MTc4NzkyMjg0MXww&ixlib=rb-4.1.0&q=85",
 };
 
+// Canvas drawing buffer padding to allow complete 360-degree rotation of full-size table without corner clipping
+export const CANVAS_PAD = {
+  x: 150,
+  y: 250,
+};
+
+export const CANVAS_DIM = {
+  w: CFG.W + 2 * CANVAS_PAD.x, // 1200
+  h: CFG.H + 2 * CANVAS_PAD.y, // 1100
+};
+
+export const SUB_STEPS = 6;
+
 /**
- * Calculates the exact dynamic fit scale required so that the rotated
- * rectangular table and its corners never get cut off across 360° of rotation.
+ * Returns table scale during rotation. Maintained at 1.0 so table keeps
+ * natural full size across 360° rotation with complete, uncut corners.
  */
-export function getTableFitScale(ang) {
-  if (!ang) return 1;
-  const cos = Math.abs(Math.cos(ang));
-  const sin = Math.abs(Math.sin(ang));
-  // Dimensions of board with outer edge bevel & drop shadow margin
-  const halfW = (BOARD.w + 16) / 2;
-  const halfH = (BOARD.h + 16) / 2;
-  const extentX = halfW * cos + halfH * sin;
-  const extentY = halfW * sin + halfH * cos;
-  const scaleX = (CFG.W / 2 - 12) / extentX;
-  const scaleY = (CFG.H / 2 - 12) / extentY;
-  return Math.min(1.0, scaleX, scaleY);
+export function getTableFitScale(_ang) {
+  return 1.0;
 }
+

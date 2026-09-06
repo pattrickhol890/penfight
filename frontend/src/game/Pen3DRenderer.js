@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { CFG } from "./constants";
+import { CFG, CANVAS_DIM } from "./constants";
 
 export class Pen3DRenderer {
   constructor(canvas) {
@@ -14,12 +14,12 @@ export class Pen3DRenderer {
     // 1. Scene
     this.scene = new THREE.Scene();
 
-    // 2. Camera (Centered Top-down Orthographic aligned with 900x600 canvas)
+    // 2. Camera (Centered Top-down Orthographic aligned with expanded canvas buffer)
     this.camera = new THREE.OrthographicCamera(
-      -CFG.W / 2,
-      CFG.W / 2,
-      -CFG.H / 2,
-      CFG.H / 2,
+      -CANVAS_DIM.w / 2,
+      CANVAS_DIM.w / 2,
+      -CANVAS_DIM.h / 2,
+      CANVAS_DIM.h / 2,
       1,
       1500
     );
@@ -33,7 +33,7 @@ export class Pen3DRenderer {
       antialias: true,
       powerPreference: "high-performance",
     });
-    this.renderer.setSize(CFG.W, CFG.H, false);
+    this.renderer.setSize(CANVAS_DIM.w, CANVAS_DIM.h, false);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -52,10 +52,10 @@ export class Pen3DRenderer {
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.width = 2048;
     keyLight.shadow.mapSize.height = 2048;
-    keyLight.shadow.camera.left = -60;
-    keyLight.shadow.camera.right = CFG.W + 60;
-    keyLight.shadow.camera.top = -60;
-    keyLight.shadow.camera.bottom = CFG.H + 60;
+    keyLight.shadow.camera.left = -CANVAS_DIM.w / 2;
+    keyLight.shadow.camera.right = CANVAS_DIM.w * 1.2;
+    keyLight.shadow.camera.top = -CANVAS_DIM.h / 2;
+    keyLight.shadow.camera.bottom = CANVAS_DIM.h * 1.2;
     keyLight.shadow.camera.near = 10;
     keyLight.shadow.camera.far = 1000;
     keyLight.shadow.bias = -0.0004;
@@ -72,7 +72,7 @@ export class Pen3DRenderer {
     this.scene.add(fillLight);
 
     // 5. Shadow Receiver Plane for the Desk Surface
-    const shadowGeo = new THREE.PlaneGeometry(CFG.W * 2, CFG.H * 2);
+    const shadowGeo = new THREE.PlaneGeometry(CANVAS_DIM.w * 2, CANVAS_DIM.h * 2);
     const shadowMat = new THREE.ShadowMaterial({ opacity: 0.32 });
     this.shadowPlane = new THREE.Mesh(shadowGeo, shadowMat);
     this.shadowPlane.position.set(CFG.W / 2, CFG.H / 2, 0);
