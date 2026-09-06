@@ -101,15 +101,26 @@ export default function ClaimUsernameModal({ isOpen, onClose }) {
     setSubmitting(false);
 
     if (res.success) {
+      try {
+        sessionStorage.setItem("pf_claim_modal_dismissed", "true");
+      } catch (e) {}
       if (onClose) onClose();
     } else {
       setSubmitError(res.error || "Failed to claim username");
     }
   };
 
+  const handleClose = () => {
+    try {
+      sessionStorage.setItem("pf_claim_modal_dismissed", "true");
+    } catch (e) {}
+    if (onClose) onClose();
+  };
+
   if (!isOpen || !user) return null;
 
   const emailPrefix = user.email?.split("@")[0]?.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 15) || "player";
+  const defaultHandle = user.username || emailPrefix;
   const suggestions = [
     emailPrefix,
     `${emailPrefix}_pf`,
@@ -148,7 +159,7 @@ export default function ClaimUsernameModal({ isOpen, onClose }) {
           {/* Close button */}
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="absolute top-4 right-4 p-1.5 rounded-full text-[#141E50]/70 hover:text-[#141E50] hover:bg-[#141E50]/10 transition-colors"
             title="Close"
           >
@@ -301,16 +312,14 @@ export default function ClaimUsernameModal({ isOpen, onClose }) {
               )}
             </button>
 
-            {user.username && (
-              <button
-                type="button"
-                onClick={() => handleClaim(user.username)}
-                disabled={submitting}
-                className="w-full py-2 rounded-xl text-xs font-bold text-[#334155] hover:bg-black/5 transition text-center"
-              >
-                Keep Default (@{user.username})
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => handleClaim(defaultHandle)}
+              disabled={submitting}
+              className="w-full py-2 rounded-xl text-xs font-bold text-[#334155] hover:bg-black/5 transition text-center cursor-pointer"
+            >
+              Keep Default (@{defaultHandle})
+            </button>
           </div>
         </motion.div>
       </div>
