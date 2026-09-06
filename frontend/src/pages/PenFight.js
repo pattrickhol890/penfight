@@ -317,21 +317,37 @@ export default function PenFight() {
       const jitter = diff === "easy" ? 0.3 : diff === "hard" ? 0.05 : 0.15;
       const powerMul = diff === "easy" ? 0.72 : diff === "hard" ? 1.0 : 0.9;
       let ang = Math.atan2(target.position.y - best.position.y, target.position.x - best.position.x);
-      ang += (Math.random() * 2 - 1) * jitter;
-      const speed = CFG.maxSpeed * powerMul * (0.85 + Math.random() * 0.15);
-      const v = { x: Math.cos(ang) * speed, y: Math.sin(ang) * speed };
+      const nominalSpeed = CFG.maxSpeed * powerMul * (0.85 + Math.random() * 0.15);
+      const ratio = nominalSpeed / CFG.maxSpeed;
+      const dir = { x: Math.cos(ang), y: Math.sin(ang) };
       const m = best.mass;
       const I = best.inertia || 1;
       const offMax = CFG.penLen * 0.42 * (diff === "hard" ? 0.4 : diff === "medium" ? 0.75 : 1);
       const off = (Math.random() * 2 - 1) * offMax;
       const axis = { x: Math.cos(best.angle), y: Math.sin(best.angle) };
       const r = { x: axis.x * off, y: axis.y * off };
-      const cross = r.x * v.y * m - r.y * v.x * m;
-      let omega = (cross / I) * CFG.spinFactor;
+
+      const leverArm = Math.abs(r.x * dir.y - r.y * dir.x);
+      const leverRatio = Math.min(1.0, leverArm / 18);
+
+      let linearEfficiency;
+      if (ratio < 0.45) {
+        linearEfficiency = Math.max(0.04, Math.pow(ratio / 0.45, 2) * (1 - leverRatio * 0.92));
+      } else {
+        linearEfficiency = ratio * (1 - leverRatio * 0.35);
+      }
+
+      const effectiveSpeed = linearEfficiency * CFG.maxSpeed;
+      const v = { x: dir.x * effectiveSpeed, y: dir.y * effectiveSpeed };
+
+      const torqueMultiplier = 1 + leverRatio * 2.8 * (1 - Math.min(1, ratio) * 0.4);
+      const cross = r.x * (dir.y * nominalSpeed) * m - r.y * (dir.x * nominalSpeed) * m;
+      let omega = (cross / I) * CFG.spinFactor * torqueMultiplier;
       omega = Math.max(-CFG.maxOmega, Math.min(CFG.maxOmega, omega));
+
       Body.setVelocity(best, v);
       Body.setAngularVelocity(best, omega);
-      sound.play("flick", speed / CFG.maxSpeed);
+      sound.play("flick", ratio);
       st.turnState = "moving";
       st.moveStart = performance.now();
       setTurnState("moving");
@@ -447,10 +463,19 @@ export default function PenFight() {
           const vSlideNew = vSlide * (1 - CFG.slideFriction);
           const vRollNew = vRoll * (1 - CFG.rollFriction);
 
-          Body.setVelocity(pen, {
-            x: vSlideNew * ux + vRollNew * rx,
-            y: vSlideNew * uy + vRollNew * ry,
-          });
+          let nextVx = vSlideNew * ux + vRollNew * rx;
+          let nextVy = vSlideNew * uy + vRollNew * ry;
+
+          // Desk Static Friction Lock:
+          // If linear translation is small but pen is rotating (like a soft clip flick),
+          // the heavy barrel contact area stays locked to the desk while rotation whips freely!
+          const linearSpeed = Math.hypot(nextVx, nextVy);
+          if (linearSpeed < 0.45 && Math.abs(pen.angularVelocity) > 0.025) {
+            nextVx *= 0.6;
+            nextVy *= 0.6;
+          }
+
+          Body.setVelocity(pen, { x: nextVx, y: nextVy });
 
           // Rolling Cam Effect: Protruding clip induces subtle torque oscillation as pen rolls
           const rollSpeed = Math.abs(vRoll);
@@ -578,13 +603,38 @@ export default function PenFight() {
       const mag = Math.min(maxDist, rawMag);
       const ratio = mag / maxDist;
       const dir = { x: dv.x / rawMag, y: dv.y / rawMag };
-      const speed = ratio * CFG.maxSpeed;
-      const v = { x: dir.x * speed, y: dir.y * speed };
+      const nominalSpeed = ratio * CFG.maxSpeed;
+
+      // Vector from Center of Mass to hit contact point
+      const r = { x: grab.x - pen.position.x, y: grab.y - pen.position.y };
       const m = pen.mass;
       const I = pen.inertia || 1;
-      const r = { x: grab.x - pen.position.x, y: grab.y - pen.position.y };
-      const cross = r.x * v.y * m - r.y * v.x * m;
-      let omega = (cross / I) * CFG.spinFactor;
+
+      // Perpendicular lever arm relative to flick direction
+      const leverArm = Math.abs(r.x * dir.y - r.y * dir.x);
+      const leverRatio = Math.min(1.0, leverArm / 18);
+
+      // Desk Static Friction & Linear Partitioning:
+      // If hit is gentle and on an off-center lever (like the clip),
+      // static friction anchors the heavy barrel, suppressing linear slide
+      // while channeling energy into pure rotation around the barrel pivot!
+      let linearEfficiency;
+      if (ratio < 0.45) {
+        // Soft hit: barrel static friction holds firm against translation
+        linearEfficiency = Math.max(0.04, Math.pow(ratio / 0.45, 2) * (1 - leverRatio * 0.92));
+      } else {
+        // Harder hit: overcomes static friction and slides
+        linearEfficiency = ratio * (1 - leverRatio * 0.35);
+      }
+
+      const effectiveSpeed = linearEfficiency * CFG.maxSpeed;
+      const v = { x: dir.x * effectiveSpeed, y: dir.y * effectiveSpeed };
+
+      // Torque & Rotational Whipping:
+      // When striking the clip, the barrel acts as a compass pivot, boosting angular snap
+      const torqueMultiplier = 1 + leverRatio * 2.8 * (1 - Math.min(1, ratio) * 0.4);
+      const cross = r.x * (dir.y * nominalSpeed) * m - r.y * (dir.x * nominalSpeed) * m;
+      let omega = (cross / I) * CFG.spinFactor * torqueMultiplier;
       omega = Math.max(-CFG.maxOmega, Math.min(CFG.maxOmega, omega));
 
       Body.setVelocity(pen, v);
