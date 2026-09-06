@@ -138,6 +138,12 @@ export function AuthProvider({ children }) {
         );
         return res.data;
       } catch (err) {
+        if (err.response?.status === 404) {
+          return {
+            available: false,
+            reason: "Backend deployment in progress... please try again in a few seconds",
+          };
+        }
         return {
           available: false,
           reason: err.response?.data?.detail || "Error checking username",
