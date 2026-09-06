@@ -1,12 +1,11 @@
-from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Header, HTTPException
+from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Header, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import requests
-
 import logging
 import random
 import string
@@ -16,14 +15,133 @@ from typing import List, Optional, Dict
 import uuid
 from datetime import datetime, timezone
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
+# MongoDB connection with short timeouts so slow/blocked connections never hang
 mongo_url = os.environ.get('MONGO_URL', '')
-client = AsyncIOMotorClient(mongo_url) if mongo_url else None
-db = client[os.environ.get('DB_NAME', 'penfight')] if client else None
+client = None
+db = None
+if mongo_url:
+    try:
+        client = AsyncIOMotorClient(
+            mongo_url,
+            serverSelectionTimeoutMS=2500,
+            connectTimeoutMS=2500,
+            socketTimeoutMS=2500,
+        )
+        db = client[os.environ.get('DB_NAME', 'penfight')]
+    except Exception as e:
+        logger.error(f"Failed to initialize Motor MongoDB client: {e}")
+
+# In-memory storage fallback when MongoDB is slow, unreachable, or during Atlas IP setup
+mem_users: Dict[str, dict] = {}
+mem_sessions: Dict[str, dict] = {}
+mem_matches: List[dict] = []
+mem_status_checks: List[dict] = []
+
+async def db_find_user(query: dict) -> Optional[dict]:
+    if db is not None:
+        try:
+            user = await db.users.find_one(query, {"_id": 0})
+            if user:
+                return user
+        except Exception as e:
+            logger.warning(f"MongoDB find_user fallback to memory: {e}")
+    for u in mem_users.values():
+        if "$or" in query:
+            for cond in query["$or"]:
+                k, v = next(iter(cond.items()))
+                if u.get(k) == v:
+                    return u
+        else:
+            if all(u.get(k) == v for k, v in query.items()):
+                return u
+    return None
+
+async def db_save_user(user_dict: dict):
+    user_id = user_dict["id"]
+    mem_users[user_id] = user_dict
+    if db is not None:
+        try:
+            await db.users.update_one({"id": user_id}, {"$set": user_dict}, upsert=True)
+        except Exception as e:
+            logger.warning(f"MongoDB save_user fallback to memory: {e}")
+
+async def db_update_user(user_id: str, updates: dict) -> Optional[dict]:
+    if user_id in mem_users:
+        mem_users[user_id].update(updates)
+    if db is not None:
+        try:
+            await db.users.update_one({"id": user_id}, {"$set": updates})
+            return await db.users.find_one({"id": user_id}, {"_id": 0})
+        except Exception as e:
+            logger.warning(f"MongoDB update_user fallback to memory: {e}")
+    return mem_users.get(user_id)
+
+async def db_create_session(token: str, user_id: str, now_iso: str):
+    sess = {"token": token, "user_id": user_id, "created_at": now_iso}
+    mem_sessions[token] = sess
+    if db is not None:
+        try:
+            await db.sessions.insert_one(sess)
+        except Exception as e:
+            logger.warning(f"MongoDB create_session fallback to memory: {e}")
+
+async def db_get_session(token: str) -> Optional[dict]:
+    if db is not None:
+        try:
+            return await db.sessions.find_one({"token": token}, {"_id": 0})
+        except Exception as e:
+            logger.warning(f"MongoDB get_session fallback to memory: {e}")
+    return mem_sessions.get(token)
+
+async def db_delete_session(token: str):
+    mem_sessions.pop(token, None)
+    if db is not None:
+        try:
+            await db.sessions.delete_many({"token": token})
+        except Exception as e:
+            logger.warning(f"MongoDB delete_session fallback: {e}")
+
+async def db_save_match(match_dict: dict):
+    mem_matches.append(match_dict)
+    if db is not None:
+        try:
+            await db.matches.insert_one(match_dict)
+        except Exception as e:
+            logger.warning(f"MongoDB save_match fallback: {e}")
+
+async def db_list_matches(limit: int = 20) -> List[dict]:
+    if db is not None:
+        try:
+            return await db.matches.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
+        except Exception as e:
+            logger.warning(f"MongoDB list_matches fallback: {e}")
+    sorted_matches = sorted(mem_matches, key=lambda m: m.get("created_at", ""), reverse=True)
+    return sorted_matches[:limit]
+
+async def db_insert_status(doc: dict):
+    mem_status_checks.append(doc)
+    if db is not None:
+        try:
+            await db.status_checks.insert_one(doc)
+        except Exception as e:
+            logger.warning(f"MongoDB insert_status fallback: {e}")
+
+async def db_list_status() -> List[dict]:
+    if db is not None:
+        try:
+            return await db.status_checks.find({}, {"_id": 0}).to_list(1000)
+        except Exception as e:
+            logger.warning(f"MongoDB list_status fallback: {e}")
+    return list(mem_status_checks)
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -189,21 +307,21 @@ async def root():
 @api_router.post("/status", response_model=StatusCheck)
 async def create_status_check(input: StatusCheckCreate):
     status_obj = StatusCheck(**input.model_dump())
-    if db is not None:
-        doc = status_obj.model_dump()
-        doc['timestamp'] = doc['timestamp'].isoformat()
-        await db.status_checks.insert_one(doc)
+    doc = status_obj.model_dump()
+    doc['timestamp'] = doc['timestamp'].isoformat()
+    await db_insert_status(doc)
     return status_obj
 
 
 @api_router.get("/status", response_model=List[StatusCheck])
 async def get_status_checks():
-    if db is None:
-        return []
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
+    status_checks = await db_list_status()
     for check in status_checks:
         if isinstance(check.get('timestamp'), str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
+            try:
+                check['timestamp'] = datetime.fromisoformat(check['timestamp'])
+            except Exception:
+                pass
     return status_checks
 
 
@@ -212,21 +330,15 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> Optio
     if not authorization or not authorization.startswith("Bearer "):
         return None
     token = authorization.split(" ")[1].strip()
-    if db is None:
-        return None
-    session = await db.sessions.find_one({"token": token}, {"_id": 0})
+    session = await db_get_session(token)
     if not session:
         return None
-    user = await db.users.find_one({"id": session["user_id"]}, {"_id": 0})
-    return user
+    return await db_find_user({"id": session["user_id"]})
 
 
 # ---------- Auth Routes ----------
 @api_router.post("/auth/google")
 async def auth_google(payload: GoogleAuthPayload):
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not available")
-
     email = None
     name = None
     google_id = None
@@ -250,11 +362,12 @@ async def auth_google(payload: GoogleAuthPayload):
                 google_id = data.get("sub")
                 picture = data.get("picture")
             else:
+                logger.warning(f"Google API token verification rejected: {resp.status_code} {resp.text}")
                 raise HTTPException(status_code=401, detail="Invalid Google credential token")
         except HTTPException:
             raise
         except Exception as e:
-            logging.error(f"Google token verification error: {e}")
+            logger.error(f"Google token verification error: {e}")
             raise HTTPException(status_code=401, detail="Google authentication verification failed")
     elif payload.demo_email:
         # Instant Profile Creator fallback for instant testing / dev
@@ -266,7 +379,15 @@ async def auth_google(payload: GoogleAuthPayload):
         raise HTTPException(status_code=400, detail="Google credential or demo_email is required")
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    user = await db.users.find_one({"$or": [{"google_id": google_id}, {"email": email}]}, {"_id": 0})
+    
+    user = None
+    query_parts = []
+    if google_id:
+        query_parts.append({"google_id": google_id})
+    if email:
+        query_parts.append({"email": email})
+    if query_parts:
+        user = await db_find_user({"$or": query_parts})
 
     if user:
         # Existing user login
@@ -275,16 +396,15 @@ async def auth_google(payload: GoogleAuthPayload):
             updates["picture"] = picture
         if name and not user.get("name"):
             updates["name"] = name
-        await db.users.update_one({"id": user["id"]}, {"$set": updates})
-        user = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+        user = await db_update_user(user["id"], updates)
     else:
         # New profile creation
         clean_tag = (name or "Student").replace(" ", "_")[:12]
         gamer_tag = f"{clean_tag}_{random.randint(10, 99)}"
         new_user = UserProfile(
             google_id=google_id,
-            email=email,
-            name=name,
+            email=email or f"{gamer_tag.lower()}@penfight.local",
+            name=name or "Player",
             gamer_tag=gamer_tag,
             picture=picture,
             created_at=now_iso,
@@ -294,17 +414,12 @@ async def auth_google(payload: GoogleAuthPayload):
             stats=UserStats(),
             preferences=UserPreferences(),
         )
-        await db.users.insert_one(new_user.model_dump())
         user = new_user.model_dump()
+        await db_save_user(user)
 
     # Create persistent session token
     token = f"pfs_{uuid.uuid4().hex}"
-    session_doc = {
-        "token": token,
-        "user_id": user["id"],
-        "created_at": now_iso,
-    }
-    await db.sessions.insert_one(session_doc)
+    await db_create_session(token, user["id"], now_iso)
 
     return {"token": token, "user": user}
 
@@ -336,67 +451,62 @@ async def update_my_profile(payload: ProfileUpdatePayload, authorization: Option
         updates["preferences"] = prefs
 
     if updates:
-        await db.users.update_one({"id": user["id"]}, {"$set": updates})
-        user = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+        user = await db_update_user(user["id"], updates)
     return user
 
 
 @api_router.post("/auth/logout")
 async def logout(authorization: Optional[str] = Header(None)):
-    if authorization and authorization.startswith("Bearer ") and db is not None:
+    if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ")[1].strip()
-        await db.sessions.delete_many({"token": token})
+        await db_delete_session(token)
     return {"message": "Logged out successfully"}
 
 
 @api_router.post("/matches", response_model=Match)
 async def create_match(payload: MatchCreate, authorization: Optional[str] = Header(None)):
     match = Match(**payload.model_dump())
-    if db is not None:
-        await db.matches.insert_one(match.model_dump())
+    match_dict = match.model_dump()
+    await db_save_match(match_dict)
 
-        # Link match result to user profile stats
-        user = await get_current_user(authorization)
-        if not user and payload.user_id:
-            user = await db.users.find_one({"id": payload.user_id}, {"_id": 0})
+    # Link match result to user profile stats
+    user = await get_current_user(authorization)
+    if not user and payload.user_id:
+        user = await db_find_user({"id": payload.user_id})
 
-        if user:
-            is_win = (payload.winner == "p1")
-            stats = user.get("stats", {
-                "games_played": 0,
-                "wins": 0,
-                "losses": 0,
-                "win_streak": 0,
-                "best_win_streak": 0,
-            })
-            stats["games_played"] = stats.get("games_played", 0) + 1
-            if is_win:
-                stats["wins"] = stats.get("wins", 0) + 1
-                curr_streak = stats.get("win_streak", 0) + 1
-                stats["win_streak"] = curr_streak
-                if curr_streak > stats.get("best_win_streak", 0):
-                    stats["best_win_streak"] = curr_streak
-            else:
-                stats["losses"] = stats.get("losses", 0) + 1
-                stats["win_streak"] = 0
-            await db.users.update_one({"id": user["id"]}, {"$set": {"stats": stats}})
+    if user:
+        is_win = (payload.winner == "p1")
+        stats = user.get("stats", {
+            "games_played": 0,
+            "wins": 0,
+            "losses": 0,
+            "win_streak": 0,
+            "best_win_streak": 0,
+        })
+        stats["games_played"] = stats.get("games_played", 0) + 1
+        if is_win:
+            stats["wins"] = stats.get("wins", 0) + 1
+            curr_streak = stats.get("win_streak", 0) + 1
+            stats["win_streak"] = curr_streak
+            if curr_streak > stats.get("best_win_streak", 0):
+                stats["best_win_streak"] = curr_streak
+        else:
+            stats["losses"] = stats.get("losses", 0) + 1
+            stats["win_streak"] = 0
+        await db_update_user(user["id"], {"stats": stats})
 
     return match
 
 
 @api_router.get("/matches", response_model=List[Match])
 async def list_matches(limit: int = 20):
-    if db is None:
-        return []
-    matches = await db.matches.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    matches = await db_list_matches(limit)
     return matches
 
 
 @api_router.get("/stats")
 async def get_stats():
-    if db is None:
-        return {"total_games": 0, "player_wins": 0, "ai_wins": 0, "local_games": 0, "online_games": 0}
-    matches = await db.matches.find({}, {"_id": 0}).to_list(10000)
+    matches = await db_list_matches(10000)
     total = len(matches)
     ai_games = [m for m in matches if m.get("mode") == "ai"]
     player_wins = sum(1 for m in ai_games if m.get("winner") == "p1")
@@ -530,19 +640,45 @@ async def websocket_endpoint(ws: WebSocket):
 
 app.include_router(api_router)
 
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    origin = request.headers.get("origin", "*")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers={
+            "Access-Control-Allow-Origin": origin if origin else "*",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "*",
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global error on {request.method} {request.url.path}: {exc}", exc_info=True)
+    origin = request.headers.get("origin", "*")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Server error: {str(exc)}"},
+        headers={
+            "Access-Control-Allow-Origin": origin if origin else "*",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "*",
+        },
+    )
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origin_regex=r"^https?://.*",
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 
 @app.on_event("shutdown")
