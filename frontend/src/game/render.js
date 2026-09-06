@@ -139,16 +139,26 @@ export function drawPen(ctx, pen) {
   roundRect(ctx, -L / 2 - 4, -W / 2, L + 6, W, W / 2);
   ctx.fill();
 
-  // Distinct Clip Shadow on Desk
-  const sinPhi = Math.sin(rollAngle);
+  // Distinct Clip Shadow on Teakwood Desk
+  // Roll angle is in [0, Math.PI]; sinPhi is strictly >= 0 (never negative Z)
+  const sinPhi = Math.max(0, Math.sin(rollAngle));
   const cosPhi = Math.cos(rollAngle);
   const barrelStart = -L / 2 + 38;
   const capTipX = -L / 2 - 6;
   const clipStartX = capTipX + 8;
   const clipEndX = barrelStart + 16;
-  const clipYOffset = -(W / 2 + 1.8) * cosPhi;
+  const clipYOffset = -(W / 2 + 1.6) * cosPhi;
+
+  // Clip shadow detaches on teakwood desk as it elevates in +Z
+  const clipZTotal = z + sinPhi * 3.5;
+  ctx.save();
+  ctx.shadowColor = "rgba(15, 8, 2, " + (shadowAlpha * 0.85) + ")";
+  ctx.shadowBlur = shadowBlur + clipZTotal * 1.5;
+  ctx.shadowOffsetX = shadowDist * 0.6 + clipZTotal * 0.4;
+  ctx.shadowOffsetY = shadowDist + clipZTotal * 0.8;
+  ctx.fillStyle = "rgba(0,0,0,0.01)";
   ctx.beginPath();
-  ctx.rect(clipStartX + 4, clipYOffset - 1.5, clipEndX - clipStartX - 6, 3);
+  ctx.rect(clipStartX + 4, clipYOffset - 1.2, clipEndX - clipStartX - 6, 2.6);
   ctx.fill();
   ctx.restore();
 
@@ -158,60 +168,6 @@ export function drawPen(ctx, pen) {
     ctx.fillStyle = "rgba(10, 5, 0, " + contactAlpha + ")";
     roundRect(ctx, -L / 2 - 2, -W / 2 + 1.2, L + 2, W - 1, (W - 1) / 2);
     ctx.fill();
-  }
-
-  // Clip 3D depth layering:
-  // sinPhi: > -0.15 means clip faces viewer (ON TOP of barrel); < -0.15 means faces desk (UNDER barrel)
-  const isClipBehind = sinPhi < -0.15;
-
-  const drawClipShape = (isOnTop) => {
-    const clipYCenter = -(W / 2) * cosPhi;
-    const profileRatio = Math.abs(cosPhi);
-    const clipThickness = 2.4 + (1 - profileRatio) * 1.4;
-    const clipTop = clipYCenter - clipThickness / 2 - (isOnTop ? 0 : 0.6 * cosPhi);
-
-    // When on top of barrel, draw drop shadow of clip ONTO the white cylinder
-    if (isOnTop) {
-      ctx.save();
-      const barrelDropAlpha = Math.min(0.45, 0.22 + sinPhi * 0.22);
-      ctx.fillStyle = "rgba(0, 0, 0, " + barrelDropAlpha + ")";
-      ctx.beginPath();
-      const dropY = clipTop + 2.2 + sinPhi * 1.5;
-      ctx.rect(clipStartX + 6, dropY, clipEndX - clipStartX - 8, clipThickness);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    const clipGrad = ctx.createLinearGradient(0, clipTop, 0, clipTop + clipThickness);
-    if (isOnTop) {
-      clipGrad.addColorStop(0, shade(capHue, Math.round(20 + sinPhi * 25)));
-      clipGrad.addColorStop(0.35, shade(capHue, Math.round(45 + sinPhi * 30)));
-      clipGrad.addColorStop(0.7, shade(capHue, Math.round(10 - profileRatio * 15)));
-      clipGrad.addColorStop(1, shade(capHue, -35));
-    } else {
-      clipGrad.addColorStop(0, shade(capHue, -40));
-      clipGrad.addColorStop(1, shade(capHue, -65));
-    }
-
-    ctx.beginPath();
-    ctx.moveTo(clipStartX, clipTop + clipThickness * 0.5);
-    ctx.lineTo(clipStartX + 4, clipTop);
-    ctx.lineTo(clipEndX - 3, clipTop);
-    ctx.lineTo(clipEndX, clipTop + clipThickness * 0.5);
-    ctx.lineTo(clipEndX - 2, clipTop + clipThickness);
-    ctx.lineTo(clipStartX + 4, clipTop + clipThickness);
-    ctx.closePath();
-    ctx.fillStyle = clipGrad;
-    ctx.fill();
-
-    ctx.strokeStyle = isOnTop ? shade(capHue, -30) : shade(capHue, -70);
-    ctx.lineWidth = 0.5;
-    ctx.stroke();
-  };
-
-  // If clip is pointing down towards desk, draw it under the barrel
-  if (isClipBehind) {
-    drawClipShape(false);
   }
 
   // ================= 2. REYNOLDS 045 OFF-WHITE BARREL =================
@@ -302,10 +258,46 @@ export function drawPen(ctx, pen) {
   ctx.lineWidth = 0.8;
   line(ctx, capTipX + 2, 0, capBaseX - 2, 0);
 
-  // ================= 6. LONG REYNOLDS POCKET CLIP (ON TOP) =================
-  if (!isClipBehind) {
-    drawClipShape(true);
+  // ================= 6. LONG REYNOLDS POCKET CLIP (+Z MOVEMENT ONLY) =================
+  // Clip centerline sweeps across Y: from top flank (-W/2) through center (0) to bottom flank (+W/2)
+  const clipYCenter = -(W / 2) * cosPhi;
+  const profileRatio = Math.abs(cosPhi);
+  const clipThickness = 2.4 + (1 - profileRatio) * 1.4;
+  const clipTop = clipYCenter - clipThickness / 2;
+
+  // When elevated in +Z above the barrel (sinPhi > 0.05), draw realistic drop shadow ONTO the white cylinder
+  if (sinPhi > 0.05) {
+    ctx.save();
+    const barrelDropAlpha = Math.min(0.42, 0.12 + sinPhi * 0.3);
+    ctx.fillStyle = "rgba(0, 0, 0, " + barrelDropAlpha + ")";
+    ctx.beginPath();
+    const dropY = clipTop + 1.8 + sinPhi * 1.6;
+    ctx.rect(clipStartX + 6, dropY, clipEndX - clipStartX - 8, clipThickness);
+    ctx.fill();
+    ctx.restore();
   }
+
+  // Clip body with specular illumination on its top face as it rises in +Z
+  const clipGrad = ctx.createLinearGradient(0, clipTop, 0, clipTop + clipThickness);
+  clipGrad.addColorStop(0, shade(capHue, Math.round(15 + sinPhi * 30)));
+  clipGrad.addColorStop(0.35, shade(capHue, Math.round(40 + sinPhi * 35)));
+  clipGrad.addColorStop(0.7, shade(capHue, Math.round(5 - profileRatio * 15)));
+  clipGrad.addColorStop(1, shade(capHue, -35));
+
+  ctx.beginPath();
+  ctx.moveTo(clipStartX, clipTop + clipThickness * 0.5);
+  ctx.lineTo(clipStartX + 4, clipTop);
+  ctx.lineTo(clipEndX - 3, clipTop);
+  ctx.lineTo(clipEndX, clipTop + clipThickness * 0.5);
+  ctx.lineTo(clipEndX - 2, clipTop + clipThickness);
+  ctx.lineTo(clipStartX + 4, clipTop + clipThickness);
+  ctx.closePath();
+  ctx.fillStyle = clipGrad;
+  ctx.fill();
+
+  ctx.strokeStyle = shade(capHue, -35);
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
 
   ctx.restore();
 }

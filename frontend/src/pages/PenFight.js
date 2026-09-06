@@ -359,8 +359,8 @@ export default function PenFight() {
       const isClipEnd = rLocalX < -CFG.penLen * 0.12;
       const clipLeverage = isClipEnd ? 1.0 : Math.max(0.3, leverRatio);
       best.penData.vz = Math.min(3.2, ratio * 2.6 * clipLeverage);
-      const rollFlick = (dir.y * axis.x - dir.x * axis.y) * ratio * 0.45;
-      best.penData.rollOmega = rollFlick + (cross / I) * 0.35;
+      const rollDirection = (best.penData.rollAngle || 0) < Math.PI / 2 ? 1 : -1;
+      best.penData.rollOmega = rollDirection * ratio * 0.35;
 
       Body.setVelocity(best, v);
       Body.setAngularVelocity(best, omega);
@@ -503,7 +503,7 @@ export default function PenFight() {
             nextVy *= 0.6;
           }
 
-          // 3D Axial Rolling & Ground Cam Lift (Z-axis mechanics):
+          // 3D Axial Rolling & Solid Desk Contact (Strictly Z >= 0, No -Z Penetration):
           const pd = pen.penData;
           if (pd.rollAngle === undefined) pd.rollAngle = 0;
           if (pd.rollOmega === undefined) pd.rollOmega = 0;
@@ -512,53 +512,52 @@ export default function PenFight() {
 
           const rollSpeed = Math.abs(vRoll);
           const radius = CFG.penW / 2;
-          const targetRollOmega = vRoll / radius;
+          const targetRollOmega = (vRoll / radius) * 0.5;
 
-          // Rolling contact drives cylinder roll spin
-          if (pd.z < 1.0) {
-            pd.rollOmega = pd.rollOmega * 0.82 + targetRollOmega * 0.18;
+          // Rolling contact drives roll angle
+          if (pd.z < 0.6) {
+            pd.rollOmega = pd.rollOmega * 0.75 + targetRollOmega * 0.25;
           } else {
-            // Airborne rotational damping
-            pd.rollOmega *= 0.985;
+            pd.rollOmega *= 0.98;
           }
 
-          // Advance 3D axial roll angle
-          pd.rollAngle = (pd.rollAngle + pd.rollOmega) % (Math.PI * 2);
+          pd.rollAngle += pd.rollOmega;
 
-          // Cam Ground Lift: protruding clip raises cap when rotating into desk
-          const sinPhi = Math.sin(pd.rollAngle);
-          const cosPhi = Math.cos(pd.rollAngle);
-          // Desk is at z=0; when sinPhi < -0.15, the protruding clip pushes up the cap
-          const liftZ = sinPhi < -0.15 ? Math.max(0, -sinPhi * CFG.clipHeight3D - 0.4) : 0;
-
-          // Rolling cam resistance & bistable settling:
-          // Rolling over the clip requires extra kinetic energy to elevate the pen;
-          // if rolling slowly, the cam pushes back (slope = -cosPhi), settling onto its flat side!
-          if (sinPhi < -0.2 && rollSpeed < 1.5) {
-            const camSlope = -cosPhi;
-            pd.rollOmega -= camSlope * 0.035;
-            nextVx -= rx * camSlope * 0.06;
-            nextVy -= ry * camSlope * 0.06;
+          // SOLID WOOD DESK FLOOR CONSTRAINT:
+          // The desk is at Z=0. The clip cannot pass through the desk into -Z.
+          // When the clip strikes the table surface at rollAngle <= 0 or >= Math.PI:
+          if (pd.rollAngle <= 0) {
+            pd.rollAngle = 0;
+            if (Math.abs(pd.rollOmega) > 0.04) {
+              sound.play("clack", Math.min(0.35, Math.abs(pd.rollOmega) * 1.5));
+              // Fast impact on desk kicks cap up into +Z
+              if (rollSpeed > 0.6 && pd.z < 0.2) {
+                pd.vz = Math.min(3.0, rollSpeed * 0.6);
+              }
+            }
+            pd.rollOmega = -pd.rollOmega * 0.3; // Rebound off desk surface
+          } else if (pd.rollAngle >= Math.PI) {
+            pd.rollAngle = Math.PI;
+            if (Math.abs(pd.rollOmega) > 0.04) {
+              sound.play("clack", Math.min(0.35, Math.abs(pd.rollOmega) * 1.5));
+              // Fast impact on desk kicks cap up into +Z
+              if (rollSpeed > 0.6 && pd.z < 0.2) {
+                pd.vz = Math.min(3.0, rollSpeed * 0.6);
+              }
+            }
+            pd.rollOmega = -pd.rollOmega * 0.3; // Rebound off desk surface
           }
 
-          // Cam Bump Hop:
-          // When rolling fast across the desk and the clip smacks into the wood,
-          // it pops the pen up in the Z-axis with a bounce sound!
-          if (sinPhi < -0.75 && pd.z <= liftZ + 0.3 && pd.vz <= 0 && rollSpeed > 0.8) {
-            pd.vz = Math.min(3.2, rollSpeed * 0.5);
-            if (rollSpeed > 1.6) sound.play("clack", Math.min(0.35, rollSpeed / 12));
-          }
-
-          // Vertical Z Gravity & Floor Collision
+          // Vertical Z Gravity & Floor Collision (Z is strictly non-negative)
           pd.vz -= CFG.gravityZ;
           pd.z += pd.vz;
-          if (pd.z <= liftZ) {
-            pd.z = liftZ;
+          if (pd.z <= 0) {
+            pd.z = 0;
             if (pd.vz < -0.8) {
-              sound.play("clack", Math.min(0.42, -pd.vz / 5.5));
+              sound.play("clack", Math.min(0.4, -pd.vz / 5.5));
             }
             pd.vz = -pd.vz * CFG.bounceZ;
-            if (Math.abs(pd.vz) < 0.2) pd.vz = 0;
+            if (Math.abs(pd.vz) < 0.18) pd.vz = 0;
           }
 
           Body.setVelocity(pen, { x: nextVx, y: nextVy });
@@ -723,8 +722,8 @@ export default function PenFight() {
       const isClipEnd = rLocalX < -CFG.penLen * 0.12;
       const clipLeverage = isClipEnd ? 1.0 : Math.max(0.3, leverRatio);
       pen.penData.vz = Math.min(3.5, ratio * 3.0 * clipLeverage);
-      const rollFlick = (dir.y * penUx - dir.x * penUy) * ratio * 0.55;
-      pen.penData.rollOmega = rollFlick + (cross / I) * 0.4;
+      const rollDirection = (pen.penData.rollAngle || 0) < Math.PI / 2 ? 1 : -1;
+      pen.penData.rollOmega = rollDirection * ratio * 0.45;
 
       Body.setVelocity(pen, v);
       Body.setAngularVelocity(pen, omega);
