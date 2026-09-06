@@ -4,6 +4,7 @@ import axios from "axios";
 import { CFG, BOARD, INK, ASSETS } from "../game/constants";
 import { sound } from "../game/sound";
 import { drawBoard, drawPen, drawAim } from "../game/render";
+import { Pen3DRenderer } from "../game/Pen3DRenderer";
 import MainMenu from "../components/game/MainMenu";
 import Hud from "../components/game/Hud";
 import GameOverModal from "../components/game/GameOverModal";
@@ -72,6 +73,7 @@ function makePen(x, y, owner, id) {
 
 export default function PenFight() {
   const canvasRef = useRef(null);
+  const webglCanvasRef = useRef(null);
   const wrapperRef = useRef(null);
   const mp = useMultiplayer();
   const mpRef = useRef(mp);
@@ -225,6 +227,15 @@ export default function PenFight() {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     let raf;
+
+    let pen3D = null;
+    if (webglCanvasRef.current) {
+      try {
+        pen3D = new Pen3DRenderer(webglCanvasRef.current);
+      } catch (e) {
+        console.warn("WebGL 3D renderer init fallback:", e);
+      }
+    }
 
     Events.on(engine, "collisionStart", (e) => {
       for (const p of e.pairs) {
@@ -451,7 +462,15 @@ export default function PenFight() {
       ctx.clearRect(0, 0, CFG.W, CFG.H);
       drawBoard(ctx);
       const st = g.current;
-      for (const pen of st.pens) drawPen(ctx, pen);
+
+      // Real 3D Meshy AI Pen Renderer (Three.js WebGL)
+      if (pen3D && pen3D.loaded) {
+        pen3D.update(st.pens);
+      } else {
+        // High-fidelity procedural 2D fallback
+        for (const pen of st.pens) drawPen(ctx, pen);
+      }
+
       if (st.aiming) drawAim(ctx, st.aiming);
 
       // Draw real-time opponent aim arrow in online mode
@@ -586,6 +605,9 @@ export default function PenFight() {
     };
     const setZoom = (z) => {
       canvas.style.transform = `scale(${z})`;
+      if (webglCanvasRef.current) {
+        webglCanvasRef.current.style.transform = `scale(${z})`;
+      }
     };
 
     const onDown = (e) => {
@@ -756,6 +778,7 @@ export default function PenFight() {
 
     return () => {
       cancelAnimationFrame(raf);
+      if (pen3D) pen3D.destroy();
       wrap.removeEventListener("mousedown", onDown);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
@@ -854,6 +877,17 @@ export default function PenFight() {
               willChange: "transform",
             }}
             data-testid="game-canvas"
+          />
+          <canvas
+            ref={webglCanvasRef}
+            width={CFG.W}
+            height={CFG.H}
+            className="absolute inset-0 h-full w-full pointer-events-none rounded-lg"
+            style={{
+              transformOrigin: "center center",
+              transition: "transform 0.14s ease-out",
+              willChange: "transform",
+            }}
           />
           {phase === "playing" && (
             <Hud
