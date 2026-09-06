@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Matter from "matter-js";
 import axios from "axios";
-import { CFG, BOARD, INK, ASSETS } from "../game/constants";
+import { CFG, BOARD, INK, ASSETS, getTableFitScale } from "../game/constants";
 import { sound } from "../game/sound";
 import { drawBoard, drawPen, drawAim } from "../game/render";
 import { Pen3DRenderer } from "../game/Pen3DRenderer";
@@ -476,10 +476,12 @@ export default function PenFight() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, CFG.W, CFG.H);
       const ang = viewAngleRef.current;
+      const fitScale = getTableFitScale(ang);
       ctx.save();
       if (ang) {
         ctx.translate(CFG.W / 2, CFG.H / 2);
         ctx.rotate(ang);
+        ctx.scale(fitScale, fitScale);
         ctx.translate(-CFG.W / 2, -CFG.H / 2);
       }
       drawBoard(ctx);
@@ -487,7 +489,7 @@ export default function PenFight() {
 
       // Real 3D Meshy AI Pen Renderer (Three.js WebGL)
       if (pen3D && pen3D.loaded) {
-        pen3D.update(st.pens, ang);
+        pen3D.update(st.pens, ang, fitScale);
       } else {
         // High-fidelity procedural 2D fallback
         for (const pen of st.pens) drawPen(ctx, pen);
@@ -628,13 +630,16 @@ export default function PenFight() {
       const rawY = (cy - r.top) * (CFG.H / r.height);
       const ang = viewAngleRef.current;
       if (!ang) return { x: rawX, y: rawY };
-      const ox = rawX - CFG.W / 2;
-      const oy = rawY - CFG.H / 2;
+      const fitScale = getTableFitScale(ang);
+      const rawDx = rawX - CFG.W / 2;
+      const rawDy = rawY - CFG.H / 2;
       const cos = Math.cos(-ang);
       const sin = Math.sin(-ang);
+      const unrotX = rawDx * cos - rawDy * sin;
+      const unrotY = rawDx * sin + rawDy * cos;
       return {
-        x: CFG.W / 2 + (ox * cos - oy * sin),
-        y: CFG.H / 2 + (ox * sin + oy * cos),
+        x: CFG.W / 2 + unrotX / fitScale,
+        y: CFG.H / 2 + unrotY / fitScale,
       };
     };
     const setZoom = (z) => {

@@ -155,11 +155,15 @@ export class Pen3DRenderer {
     return geo;
   }
 
-  update(pens, viewAngle = 0) {
+  update(pens, viewAngle = 0, viewScale = 1.0) {
     if (!this.loaded) return;
 
     // Synchronize 360-degree table rotation around board center (450, 300)
     this.camera.rotation.z = -viewAngle;
+    if (this.camera.zoom !== viewScale) {
+      this.camera.zoom = viewScale;
+      this.camera.updateProjectionMatrix();
+    }
 
     const currentIds = new Set(pens.map((p) => p.penData.id));
 
