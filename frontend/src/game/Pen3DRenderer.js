@@ -19,7 +19,7 @@ export class Pen3DRenderer {
     this.camera.position.set(0, 0, 600);
     this.camera.lookAt(0, 0, 0);
 
-    // 3. WebGL Renderer with High-Vibrancy Tone Mapping
+    // 3. WebGL Renderer
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
       alpha: true,
@@ -30,38 +30,39 @@ export class Pen3DRenderer {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.45;
 
-    // 4. Studio Lighting Rig for Crisp, Highly Visible 3D Models
-    // Overhead Sky/Ground Hemisphere Ambient Fill
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0xcad8ea, 2.4);
+    // 4. Enhanced Multi-source Studio Lighting (Eliminates all dark spots)
+    // 4a. Bright 360-degree Hemisphere Sky/Ground Light
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0xd0e0ff, 2.2);
     this.scene.add(hemiLight);
 
-    // Main Overhead Key Light (casts soft shadows)
-    const dirLight = new THREE.DirectionalLight(0xffffff, 2.8);
-    dirLight.position.set(CFG.W * 0.4, CFG.H * 0.25, 600);
-    dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 2048;
-    dirLight.shadow.mapSize.height = 2048;
-    dirLight.shadow.camera.left = -50;
-    dirLight.shadow.camera.right = CFG.W + 50;
-    dirLight.shadow.camera.top = -50;
-    dirLight.shadow.camera.bottom = CFG.H + 50;
-    dirLight.shadow.camera.near = 10;
-    dirLight.shadow.camera.far = 1000;
-    dirLight.shadow.bias = -0.0004;
-    this.scene.add(dirLight);
+    // 4b. Key Sunlight from Top-Left (Casting crisp soft shadows)
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+    keyLight.position.set(CFG.W * 0.35, CFG.H * 0.2, 550);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.width = 2048;
+    keyLight.shadow.mapSize.height = 2048;
+    keyLight.shadow.camera.left = -60;
+    keyLight.shadow.camera.right = CFG.W + 60;
+    keyLight.shadow.camera.top = -60;
+    keyLight.shadow.camera.bottom = CFG.H + 60;
+    keyLight.shadow.camera.near = 10;
+    keyLight.shadow.camera.far = 1000;
+    keyLight.shadow.bias = -0.0004;
+    this.scene.add(keyLight);
 
-    // Warm Front-Left Fill Light (eliminates dark under-shading)
-    const fillLight = new THREE.DirectionalLight(0xfff3e6, 1.5);
-    fillLight.position.set(CFG.W * 0.1, CFG.H * 0.85, 450);
+    // 4c. Direct Overhead Studio Light (Bright top specular glint on the pen bodies)
+    const topLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    topLight.position.set(CFG.W * 0.5, CFG.H * 0.5, 600);
+    this.scene.add(topLight);
+
+    // 4d. Warm Fill Light from Bottom-Right (Illuminates bottom flanks)
+    const fillLight = new THREE.DirectionalLight(0xfff2e0, 1.4);
+    fillLight.position.set(CFG.W * 0.85, CFG.H * 0.85, 450);
     this.scene.add(fillLight);
-
-    // Cool Specular Rim Light from bottom-right (adds crisp edge highlights)
-    const rimLight = new THREE.DirectionalLight(0xbadfff, 1.2);
-    rimLight.position.set(CFG.W * 0.85, CFG.H * 0.7, 500);
-    this.scene.add(rimLight);
 
     // 5. Shadow Receiver Plane for the Desk Surface
     const shadowGeo = new THREE.PlaneGeometry(CFG.W + 200, CFG.H + 200);
@@ -94,21 +95,18 @@ export class Pen3DRenderer {
         geo.center();
         geo.computeVertexNormals();
 
-        // Enhanced Scale: Bolder, chunkier, easily visible on the table
-        // Length along X: ~114px, Diameter along Y/Z: ~17.5px (distinct and prominently visible)
-        this.scaleX = (CFG.penLen * 1.08) / 1.8992;
-        this.scaleY = 17.5 / 0.1445;
-        this.scaleZ = 17.5 / 0.1445;
+        // Length of base mesh along X is ~1.899
+        this.penScale = CFG.penLen / 1.8992;
 
-        // Build bright, vibrant vertex colors
-        this.p1TemplateGeo = this.createTeamGeometry(geo, "#1E88E5"); // Radiant French Royal Blue
-        this.p2TemplateGeo = this.createTeamGeometry(geo, "#FF2A4D"); // Vivid Punchy Crimson Red
+        // Build vivid vertex colors for P1 (Electric Blue) and P2 (Radiant Red)
+        this.p1TemplateGeo = this.createTeamGeometry(geo, "#1473E6");
+        this.p2TemplateGeo = this.createTeamGeometry(geo, "#E02424");
 
-        // Glossy, vibrant material with high reflectance and low absorption
+        // Glossy, bright plastic material with crisp specular reflections
         this.material = new THREE.MeshStandardMaterial({
           vertexColors: true,
-          roughness: 0.18, // Glossy plastic catches bright specular reflections
-          metalness: 0.08, // Low metalness ensures pure vibrant diffuse colors
+          roughness: 0.18, // High-gloss finish reflects sharp light
+          metalness: 0.02, // Non-metallic plastic reflects maximum diffuse color
         });
 
         this.loaded = true;
@@ -125,21 +123,21 @@ export class Pen3DRenderer {
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
     const capColor = new THREE.Color(capHex);
-    const collarColor = new THREE.Color("#EAEAEA"); // Radiant chrome ring
-    const barrelColor = new THREE.Color("#FFFFFF"); // Pure glossy white plastic
-    const nibColor = new THREE.Color("#9E9E9E"); // Steel tip
+    const collarColor = new THREE.Color("#E8E8E8"); // Polished chrome collar
+    const barrelColor = new THREE.Color("#FFFFFF"); // Crisp, brilliant white barrel
+    const nibColor = new THREE.Color("#A8A8A8"); // Polished steel nib
 
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       let c;
       if (x < -0.24) {
-        c = capColor; // Iconic vibrant cap & clip
+        c = capColor; // Iconic cap & clip
       } else if (x < -0.19) {
         c = collarColor; // Metallic chrome ring
       } else if (x > 0.88) {
         c = nibColor; // Metallic pen tip
       } else {
-        c = barrelColor; // Brilliant glossy white barrel
+        c = barrelColor; // Brilliant white barrel
       }
       colors[i * 3] = c.r;
       colors[i * 3 + 1] = c.g;
@@ -172,7 +170,7 @@ export class Pen3DRenderer {
         const isP1 = pen.penData.owner === "p1";
         const geo = isP1 ? this.p1TemplateGeo : this.p2TemplateGeo;
         mesh = new THREE.Mesh(geo, this.material);
-        mesh.scale.set(this.scaleX, this.scaleY, this.scaleZ);
+        mesh.scale.set(this.penScale, this.penScale, this.penScale);
         mesh.castShadow = true;
         mesh.receiveShadow = false;
         this.scene.add(mesh);
@@ -190,8 +188,8 @@ export class Pen3DRenderer {
           pen.position.y,
           -fallProgress * 280
         );
-        const fade = Math.max(0.05, 1 - fallProgress * 0.45);
-        mesh.scale.set(this.scaleX * fade, this.scaleY * fade, this.scaleZ * fade);
+        const s = this.penScale * Math.max(0.05, 1 - fallProgress * 0.45);
+        mesh.scale.set(s, s, s);
 
         const qYaw = new THREE.Quaternion().setFromAxisAngle(
           new THREE.Vector3(0, 0, 1),
@@ -203,9 +201,9 @@ export class Pen3DRenderer {
         );
         mesh.quaternion.copy(qYaw).multiply(qTumble);
       } else {
-        // Normal active pen on table: rests cleanly on desk with elevation
-        mesh.position.set(pen.position.x, pen.position.y, 8.5 + zElevation);
-        mesh.scale.set(this.scaleX, this.scaleY, this.scaleZ);
+        // Normal active pen on table
+        mesh.position.set(pen.position.x, pen.position.y, 6.5 + zElevation);
+        mesh.scale.set(this.penScale, this.penScale, this.penScale);
 
         // Yaw orientation (Matter.js 2D angle) + Roll around pen length (X-axis)
         const qYaw = new THREE.Quaternion().setFromAxisAngle(
