@@ -18,6 +18,8 @@ import {
   requestFullscreenAndLockLandscape,
   exitFullscreenAndUnlockOrientation,
 } from "../game/fullscreenOrientation";
+import { PEN_CATALOG, DEFAULT_LINEUP } from "../game/penCatalog";
+import PenboxModal from "../components/game/PenboxModal";
 
 const { Engine, World, Bodies, Body, Query, Events } = Matter;
 const API = `${process.env.REACT_APP_BACKEND_URL || ""}/api`;
@@ -25,13 +27,16 @@ const API = `${process.env.REACT_APP_BACKEND_URL || ""}/api`;
 const speedOf = (b) => Math.hypot(b.velocity.x, b.velocity.y);
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
-function makePen(x, y, owner, id) {
+function makePen(x, y, owner, id, penType = "classic") {
+  const penCfg = PEN_CATALOG[penType] || PEN_CATALOG.classic;
+  const massMult = penCfg.massMultiplier || 1.0;
+
   // 1. Main cylindrical barrel body
   const main = Bodies.rectangle(x, y, CFG.penLen, CFG.penW, {
     chamfer: { radius: CFG.penW / 2 },
-    density: 0.0035,
-    friction: 0.05,
-    restitution: 0.35,
+    density: 0.0035 * massMult,
+    friction: penCfg.friction || 0.05,
+    restitution: penCfg.restitution || 0.35,
   });
 
   // 2. Physical protruding pocket clip (attached on the cap end along top ridge)
@@ -44,19 +49,19 @@ function makePen(x, y, owner, id) {
     clipW,
     {
       chamfer: { radius: 1.5 },
-      density: 0.0075, // Denser plastic/metal clip adds real asymmetric mass
-      friction: 0.08,
-      restitution: 0.42,
+      density: 0.0075 * massMult, // Asymmetric mass scales with pen weight
+      friction: (penCfg.friction || 0.05) + 0.03,
+      restitution: penCfg.restitution || 0.42,
     }
   );
 
   // 3. Composite Rigid Body
   const b = Body.create({
     parts: [main, clip],
-    frictionAir: CFG.frictionAir,
-    friction: 0.05,
-    frictionStatic: 0.3,
-    restitution: 0.35,
+    frictionAir: penCfg.frictionAir || CFG.frictionAir,
+    friction: penCfg.friction || 0.05,
+    frictionStatic: 0.3 * massMult,
+    restitution: penCfg.restitution || 0.35,
     slop: 0.02,
   });
 
@@ -64,7 +69,9 @@ function makePen(x, y, owner, id) {
 
   b.penData = {
     owner,
-    hue: owner === "p1" ? INK.p1 : INK.p2,
+    type: penType,
+    name: penCfg.shortName || "Pen",
+    hue: penCfg.inkColor?.[owner] || (owner === "p1" ? INK.p1 : INK.p2),
     id: id || Math.random().toString(36).slice(2),
     teeter: 0,
     falling: false,
@@ -85,7 +92,15 @@ export default function PenFight() {
   const wrapperRef = useRef(null);
   const mp = useMultiplayer();
   const mpRef = useRef(mp);
-  const { user, token, refreshProfile } = useAuth();
+  const {
+    user,
+    token,
+    refreshProfile,
+    activeLineup,
+    updateMissionProgress,
+    penboxModalOpen,
+    setPenboxModalOpen,
+  } = useAuth();
   useEffect(() => {
     mpRef.current = mp;
   }, [mp]);
@@ -307,6 +322,18 @@ export default function PenFight() {
     setWinner(w);
     const playerWon = st.mode === "ai" ? w === "p1" : st.mode === "online" ? w === mp.role : true;
     sound.play(!playerWon ? "lose" : "win");
+
+    // Advance classroom missions
+    if (updateMissionProgress) {
+      updateMissionProgress("play_match", 1);
+      if (playerWon) {
+        updateMissionProgress("win_match", 1);
+        const hadGel = st.pens.some((p) => p.penData.owner === "p1" && p.penData.type === "ocean_gel");
+        if (hadGel) {
+          updateMissionProgress("win_with_gel", 1);
+        }
+      }
+    }
 
     const body = {
       mode: st.mode,
@@ -958,7 +985,7 @@ export default function PenFight() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const startGame = (m, diff) => {
+  const startGame = (m, diff, customLineup) => {
     sound.ensure();
     const st = g.current;
     const engine = st.engine;
@@ -966,10 +993,40 @@ export default function PenFight() {
     const pens = [];
     const n = CFG.pensPerSide;
     const spacing = BOARD.w / (n + 1);
+
+    const savedLineup = (() => {
+      try {
+        const stored = localStorage.getItem("pf_active_lineup");
+        return stored ? JSON.parse(stored) : null;
+      } catch {
+        return null;
+      }
+    })();
+
+    const p1Lineup =
+      customLineup && customLineup.length === n
+        ? customLineup
+        : activeLineup && activeLineup.length === n
+        ? activeLineup
+        : user?.active_lineup && user.active_lineup.length === n
+        ? user.active_lineup
+        : savedLineup && savedLineup.length === n
+        ? savedLineup
+        : DEFAULT_LINEUP;
+
+    let p2Lineup = ["classic", "classic", "classic", "classic"];
+    if (diff === "hard") {
+      p2Lineup = ["ocean_gel", "classic", "ocean_gel", "classic"];
+    } else if (diff === "medium") {
+      p2Lineup = ["classic", "ocean_gel", "classic", "classic"];
+    } else if (m === "local") {
+      p2Lineup = [...p1Lineup];
+    }
+
     for (let i = 0; i < n; i++) {
       const x = BOARD.x + spacing * (i + 1);
-      pens.push(makePen(x, BOARD.y + BOARD.h - 85, "p1", `p1_pen_${i}`));
-      pens.push(makePen(x, BOARD.y + 85, "p2", `p2_pen_${i}`));
+      pens.push(makePen(x, BOARD.y + BOARD.h - 85, "p1", `p1_pen_${i}`, p1Lineup[i] || "classic"));
+      pens.push(makePen(x, BOARD.y + 85, "p2", `p2_pen_${i}`, p2Lineup[i] || "classic"));
     }
     World.add(engine.world, pens);
     Object.assign(st, {
@@ -1147,6 +1204,11 @@ export default function PenFight() {
           mp={mp}
         />
       )}
+
+      <PenboxModal
+        isOpen={penboxModalOpen}
+        onClose={() => setPenboxModalOpen(false)}
+      />
 
       {phase === "playing" && (
         <TableJoystick

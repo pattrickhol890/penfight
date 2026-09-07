@@ -1,11 +1,52 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import axios from "axios";
+import { DEFAULT_INVENTORY, DEFAULT_LINEUP } from "../game/penCatalog";
 
 const AuthContext = createContext(null);
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ""}/api`;
 const TOKEN_KEY = "penfight_auth_token";
 const USER_KEY = "penfight_user_data";
+const INVENTORY_KEY = "pf_inventory";
+const LINEUP_KEY = "pf_active_lineup";
+const COINS_KEY = "pf_ink_coins";
+const MISSIONS_KEY = "pf_missions";
+
+const INITIAL_MISSIONS = [
+  {
+    id: "m_first_match",
+    title: "First Bell: Welcome to Desk",
+    desc: "Play your first match on the classroom desk.",
+    target: 1,
+    current: 0,
+    rewardType: "coins",
+    rewardAmount: 60,
+    rewardText: "+60 Ink Coins",
+    claimed: false,
+  },
+  {
+    id: "m_win_3",
+    title: "Classroom Boss",
+    desc: "Win 3 matches across AI or Local multiplayer.",
+    target: 3,
+    current: 0,
+    rewardType: "pen",
+    rewardPen: "ocean_gel",
+    rewardText: "+1 Ocean Gel Pen",
+    claimed: false,
+  },
+  {
+    id: "m_gel_win",
+    title: "Heavy Artillery",
+    desc: "Win a match with Ocean Gel in your active lineup.",
+    target: 1,
+    current: 0,
+    rewardType: "coins",
+    rewardAmount: 100,
+    rewardText: "+100 Ink Coins",
+    claimed: false,
+  },
+];
 
 const RESERVED_NAMES = new Set([
   "admin", "administrator", "root", "system", "penfight", "moderator",
@@ -24,6 +65,126 @@ export function AuthProvider({ children }) {
   });
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || null);
   const [loading, setLoading] = useState(true);
+
+  // Penbox Inventory (Count of each pen model owned by player)
+  const [inventory, setInventory] = useState(() => {
+    try {
+      const saved = localStorage.getItem(INVENTORY_KEY);
+      return saved ? JSON.parse(saved) : DEFAULT_INVENTORY;
+    } catch {
+      return DEFAULT_INVENTORY;
+    }
+  });
+
+  // Active 4-Slot Desk Lineup
+  const [activeLineup, setActiveLineup] = useState(() => {
+    try {
+      const saved = localStorage.getItem(LINEUP_KEY);
+      return saved ? JSON.parse(saved) : DEFAULT_LINEUP;
+    } catch {
+      return DEFAULT_LINEUP;
+    }
+  });
+
+  // Ink Coins currency
+  const [inkCoins, setInkCoins] = useState(() => {
+    try {
+      const saved = localStorage.getItem(COINS_KEY);
+      return saved ? Number(saved) : 150;
+    } catch {
+      return 150;
+    }
+  });
+
+  // Classroom Missions
+  const [missions, setMissions] = useState(() => {
+    try {
+      const saved = localStorage.getItem(MISSIONS_KEY);
+      return saved ? JSON.parse(saved) : INITIAL_MISSIONS;
+    } catch {
+      return INITIAL_MISSIONS;
+    }
+  });
+
+  const [penboxModalOpen, setPenboxModalOpen] = useState(false);
+
+  // Update active 4-slot desk lineup
+  const updateLineup = useCallback(
+    (newLineup) => {
+      if (!Array.isArray(newLineup) || newLineup.length !== 4) return;
+      setActiveLineup(newLineup);
+      localStorage.setItem(LINEUP_KEY, JSON.stringify(newLineup));
+    },
+    []
+  );
+
+  // Add pen(s) to inventory
+  const addPenToInventory = useCallback((penId, count = 1) => {
+    setInventory((prev) => {
+      const updated = {
+        ...prev,
+        [penId]: (prev[penId] || 0) + count,
+      };
+      localStorage.setItem(INVENTORY_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  // Add ink coins
+  const addInkCoins = useCallback((amount) => {
+    setInkCoins((prev) => {
+      const updated = prev + amount;
+      localStorage.setItem(COINS_KEY, updated.toString());
+      return updated;
+    });
+  }, []);
+
+  // Claim mission reward
+  const claimMissionReward = useCallback(
+    (missionId) => {
+      setMissions((prev) => {
+        const updated = prev.map((m) => {
+          if (m.id !== missionId || m.claimed) return m;
+          if ((m.current || 0) < (m.target || 1)) return m;
+
+          if (m.rewardType === "pen" && m.rewardPen) {
+            addPenToInventory(m.rewardPen, 1);
+          } else if (m.rewardType === "coins" && m.rewardAmount) {
+            addInkCoins(m.rewardAmount);
+          }
+
+          return { ...m, claimed: true };
+        });
+        localStorage.setItem(MISSIONS_KEY, JSON.stringify(updated));
+        return updated;
+      });
+    },
+    [addPenToInventory, addInkCoins]
+  );
+
+  // Increment mission progress
+  const updateMissionProgress = useCallback((key, delta = 1) => {
+    setMissions((prev) => {
+      let changed = false;
+      const updated = prev.map((m) => {
+        if (m.claimed) return m;
+        let shouldIncrement = false;
+        if (key === "play_match" && m.id === "m_first_match") shouldIncrement = true;
+        if (key === "win_match" && m.id === "m_win_3") shouldIncrement = true;
+        if (key === "win_with_gel" && m.id === "m_gel_win") shouldIncrement = true;
+
+        if (shouldIncrement) {
+          changed = true;
+          return { ...m, current: Math.min(m.target, (m.current || 0) + delta) };
+        }
+        return m;
+      });
+      if (changed) {
+        localStorage.setItem(MISSIONS_KEY, JSON.stringify(updated));
+      }
+      return updated;
+    });
+  }, []);
 
   // Configure axios authorization header
   const getAuthHeaders = useCallback(() => {
@@ -260,6 +421,17 @@ export function AuthProvider({ children }) {
         claimUsername,
         claimUsernameModalOpen,
         setClaimUsernameModalOpen,
+        inventory,
+        activeLineup,
+        updateLineup,
+        addPenToInventory,
+        inkCoins,
+        addInkCoins,
+        missions,
+        claimMissionReward,
+        updateMissionProgress,
+        penboxModalOpen,
+        setPenboxModalOpen,
         logout,
         refreshProfile,
         getAuthHeaders,

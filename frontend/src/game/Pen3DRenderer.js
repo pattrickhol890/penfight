@@ -79,12 +79,18 @@ export class Pen3DRenderer {
     this.shadowPlane.receiveShadow = true;
     this.scene.add(this.shadowPlane);
 
-    // 6. Load the 3D Pen Model
-    this.loadModel();
+    // 6. Load both 3D Pen Models (Classic & Ocean Gel)
+    this.models = {
+      classic: { loaded: false, geoP1: null, geoP2: null, mat: null, scale: CFG.penLen / 1.8992 },
+      ocean_gel: { loaded: false, geo: null, matP1: null, matP2: null, scale: CFG.penLen / 1.8996 },
+    };
+    this.loadModels();
   }
 
-  loadModel() {
+  loadModels() {
     const loader = new GLTFLoader();
+
+    // 1. Classic Reynolds 045 Ballpoint (pen.glb)
     loader.load(
       "/models/pen.glb",
       (gltf) => {
@@ -102,25 +108,80 @@ export class Pen3DRenderer {
         geo.center();
         geo.computeVertexNormals();
 
-        // Length of base mesh along X is ~1.899
-        this.penScale = CFG.penLen / 1.8992;
+        const penScale = CFG.penLen / 1.8992;
+        const p1TemplateGeo = this.createTeamGeometry(geo, "#1473E6");
+        const p2TemplateGeo = this.createTeamGeometry(geo, "#E02424");
 
-        // Build vivid vertex colors for P1 (Electric Blue) and P2 (Radiant Red)
-        this.p1TemplateGeo = this.createTeamGeometry(geo, "#1473E6");
-        this.p2TemplateGeo = this.createTeamGeometry(geo, "#E02424");
-
-        // Glossy, bright plastic material with crisp specular reflections
-        this.material = new THREE.MeshStandardMaterial({
+        const material = new THREE.MeshStandardMaterial({
           vertexColors: true,
-          roughness: 0.18, // High-gloss finish reflects sharp light
-          metalness: 0.02, // Non-metallic plastic reflects maximum diffuse color
+          roughness: 0.18,
+          metalness: 0.02,
         });
 
+        this.models.classic = {
+          loaded: true,
+          geoP1: p1TemplateGeo,
+          geoP2: p2TemplateGeo,
+          mat: material,
+          scale: penScale,
+        };
         this.loaded = true;
       },
       undefined,
       (err) => {
         console.error("Failed to load /models/pen.glb:", err);
+      }
+    );
+
+    // 2. Ocean Gel 0.5 (pen2.glb)
+    loader.load(
+      "/models/pen2.glb",
+      (gltf) => {
+        let baseMesh = null;
+        gltf.scene.traverse((child) => {
+          if (child.isMesh && !baseMesh) baseMesh = child;
+        });
+
+        if (!baseMesh) {
+          console.warn("No mesh found in pen2.glb");
+          return;
+        }
+
+        const geo = baseMesh.geometry.clone();
+        geo.center();
+        geo.computeVertexNormals();
+
+        // pen2.glb has length along Y axis (+Y is nib, -Y is cap).
+        // Rotate -90° around Z so +Y becomes +X (nib) and -Y becomes -X (cap)
+        geo.rotateZ(-Math.PI / 2);
+
+        const penScale = CFG.penLen / 1.8996;
+        const baseMat = baseMesh.material || new THREE.MeshStandardMaterial();
+
+        // P1: Electric Ocean Blue tint
+        const matP1 = baseMat.clone();
+        matP1.color = new THREE.Color("#CBE6FA");
+        matP1.roughness = 0.22;
+        matP1.metalness = 0.12;
+
+        // P2: Crimson Red tint
+        const matP2 = baseMat.clone();
+        matP2.color = new THREE.Color("#FFD2D2");
+        matP2.roughness = 0.22;
+        matP2.metalness = 0.12;
+
+        this.models.ocean_gel = {
+          loaded: true,
+          geo,
+          matP1,
+          matP2,
+          scale: penScale,
+        };
+        this.loaded = true;
+      },
+      undefined,
+      (err) => {
+        console.error("Failed to load /models/pen2.glb:", err);
       }
     );
   }
@@ -180,17 +241,32 @@ export class Pen3DRenderer {
       const id = pen.penData.id;
       let mesh = this.meshes.get(id);
 
+      const penType = pen.penData.type || "classic";
+      const isP1 = pen.penData.owner === "p1";
+
       if (!mesh) {
-        const isP1 = pen.penData.owner === "p1";
-        const geo = isP1 ? this.p1TemplateGeo : this.p2TemplateGeo;
-        mesh = new THREE.Mesh(geo, this.material);
-        mesh.scale.set(this.penScale, this.penScale, this.penScale);
+        if (penType === "ocean_gel" && this.models.ocean_gel?.loaded) {
+          const model = this.models.ocean_gel;
+          mesh = new THREE.Mesh(model.geo, isP1 ? model.matP1 : model.matP2);
+          mesh.penScale = model.scale;
+          mesh.scale.set(model.scale, model.scale, model.scale);
+        } else if (this.models.classic?.loaded) {
+          const model = this.models.classic;
+          const geo = isP1 ? model.geoP1 : model.geoP2;
+          mesh = new THREE.Mesh(geo, model.mat);
+          mesh.penScale = model.scale;
+          mesh.scale.set(model.scale, model.scale, model.scale);
+        } else {
+          continue;
+        }
+
         mesh.castShadow = true;
         mesh.receiveShadow = false;
         this.scene.add(mesh);
         this.meshes.set(id, mesh);
       }
 
+      const penScale = mesh.penScale || (CFG.penLen / 1.8992);
       const zElevation = (pen.penData.z || 0) * 1.5;
       const isFalling = pen.penData.falling;
       const fallProgress = pen.penData.fallProgress || 0;
@@ -202,7 +278,7 @@ export class Pen3DRenderer {
           pen.position.y,
           -fallProgress * 280
         );
-        const s = this.penScale * Math.max(0.05, 1 - fallProgress * 0.45);
+        const s = penScale * Math.max(0.05, 1 - fallProgress * 0.45);
         mesh.scale.set(s, s, s);
 
         const qYaw = new THREE.Quaternion().setFromAxisAngle(
@@ -217,7 +293,7 @@ export class Pen3DRenderer {
       } else {
         // Normal active pen on table
         mesh.position.set(pen.position.x, pen.position.y, 6.5 + zElevation);
-        mesh.scale.set(this.penScale, this.penScale, this.penScale);
+        mesh.scale.set(penScale, penScale, penScale);
 
         // Yaw orientation (Matter.js 2D angle) + Roll around pen length (X-axis)
         const qYaw = new THREE.Quaternion().setFromAxisAngle(

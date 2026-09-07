@@ -90,9 +90,14 @@ export function drawBoard(ctx) {
 export function drawPen(ctx, pen) {
   const { position, angle } = pen;
   const isP1 = pen.penData.owner === "p1";
-  const capHue = isP1 ? "#0A65C2" : "#D11A38"; // Reynolds Royal Blue vs Crimson Red
-  const collarHue = isP1 ? "#00A2E8" : "#FF3355"; // Cyan/Red metallic collar
-  const textHue = "#7A1C1C"; // Authentic Reynolds maroon/burgundy imprint
+  const isOceanGel = pen.penData.type === "ocean_gel";
+  const capHue = isOceanGel
+    ? (isP1 ? "#0284C7" : "#DC2626")
+    : (isP1 ? "#0A65C2" : "#D11A38"); // Reynolds Royal Blue vs Crimson Red
+  const collarHue = isOceanGel
+    ? (isP1 ? "#38BDF8" : "#F87171")
+    : (isP1 ? "#00A2E8" : "#FF3355"); // Cyan/Red metallic collar
+  const textHue = isOceanGel ? (isP1 ? "#0369A1" : "#991B1B") : "#7A1C1C"; // Typography imprint color
   const L = CFG.penLen; // ~106px
   const W = CFG.penW; // ~13px
   const fallProgress = pen.penData.fallProgress || 0;
@@ -143,48 +148,58 @@ export function drawPen(ctx, pen) {
   // Distinct Clip Shadow on Teakwood Desk
   // Roll angle is in [0, Math.PI]; sinPhi is strictly >= 0 (never negative Z)
   const sinPhi = Math.max(0, Math.sin(rollAngle));
-  const cosPhi = Math.cos(rollAngle);
-  const barrelStart = -L / 2 + 38;
-  const capTipX = -L / 2 - 6;
-  const clipStartX = capTipX + 8;
-  const clipEndX = barrelStart + 16;
-  const clipYOffset = -(W / 2 + 1.6) * cosPhi;
+  if (sinPhi > 0.05) {
+    ctx.save();
+    const clipShadowDist = shadowDist * (1 + sinPhi * 0.85);
+    ctx.shadowColor = "rgba(10, 5, 1, " + (shadowAlpha * 0.75 * sinPhi) + ")";
+    ctx.shadowBlur = shadowBlur * (1 + sinPhi * 0.5);
+    ctx.shadowOffsetX = clipShadowDist * 0.6;
+    ctx.shadowOffsetY = clipShadowDist;
+    ctx.fillStyle = "rgba(0,0,0,0.01)";
+    const clipShadX = -L / 2 + 18;
+    const clipShadW = 38;
+    ctx.beginPath();
+    roundRect(ctx, clipShadX, -W / 2 - 5, clipShadW, 6, 2.5);
+    ctx.fill();
+    ctx.restore();
+  }
 
-  // Clip shadow detaches on teakwood desk as it elevates in +Z
-  const clipZTotal = z + sinPhi * 3.5;
-  ctx.save();
-  ctx.shadowColor = "rgba(15, 8, 2, " + (shadowAlpha * 0.85) + ")";
-  ctx.shadowBlur = shadowBlur + clipZTotal * 1.5;
-  ctx.shadowOffsetX = shadowDist * 0.6 + clipZTotal * 0.4;
-  ctx.shadowOffsetY = shadowDist + clipZTotal * 0.8;
-  ctx.fillStyle = "rgba(0,0,0,0.01)";
-  ctx.beginPath();
-  ctx.rect(clipStartX + 4, clipYOffset - 1.2, clipEndX - clipStartX - 6, 2.6);
-  ctx.fill();
-  ctx.restore();
-
-  // Ambient Occlusion Contact Shadow (fades out as pen elevates in Z)
-  if (!isFalling && z < 2.5) {
-    const contactAlpha = Math.max(0, 0.32 * (1 - z / 2.5));
+  // Soft contact ambient occlusion directly beneath the barrel
+  if (!isFalling && z < 1.2) {
+    const contactAlpha = Math.max(0, (1 - z / 1.2) * 0.28);
     ctx.fillStyle = "rgba(10, 5, 0, " + contactAlpha + ")";
+    ctx.beginPath();
     roundRect(ctx, -L / 2 - 2, -W / 2 + 1.2, L + 2, W - 1, (W - 1) / 2);
     ctx.fill();
   }
 
-  // ================= 2. REYNOLDS 045 OFF-WHITE BARREL =================
+  // ================= 2. PEN BARREL =================
+  const barrelStart = -L / 2 + 38;
   const barrelEnd = L / 2;
   const barrelLen = barrelEnd - barrelStart;
 
-  // Off-white cylindrical gradient (with realistic top highlight & bottom shade)
+  // Cylindrical gradient
   const barrelGrad = ctx.createLinearGradient(0, -W / 2, 0, W / 2);
-  barrelGrad.addColorStop(0, "#D6D4CE");
-  barrelGrad.addColorStop(0.2, "#E8E7E2");
-  barrelGrad.addColorStop(0.42, "#FFFFFF"); // Specular plastic glint
-  barrelGrad.addColorStop(0.65, "#EDECE7");
-  barrelGrad.addColorStop(0.85, "#DCDAD3");
-  barrelGrad.addColorStop(1, "#C2C0B8");
+  if (isOceanGel) {
+    const baseLight = isP1 ? "#DDF2FD" : "#FFE4E6";
+    const baseMid = isP1 ? "#BAE6FD" : "#FECDD3";
+    const baseDark = isP1 ? "#7DD3FC" : "#FDA4AF";
+    barrelGrad.addColorStop(0, baseDark);
+    barrelGrad.addColorStop(0.2, baseMid);
+    barrelGrad.addColorStop(0.42, "#FFFFFF"); // Specular glint
+    barrelGrad.addColorStop(0.65, baseLight);
+    barrelGrad.addColorStop(0.85, baseMid);
+    barrelGrad.addColorStop(1, baseDark);
+  } else {
+    barrelGrad.addColorStop(0, "#D6D4CE");
+    barrelGrad.addColorStop(0.2, "#E8E7E2");
+    barrelGrad.addColorStop(0.42, "#FFFFFF"); // Specular plastic glint
+    barrelGrad.addColorStop(0.65, "#EDECE7");
+    barrelGrad.addColorStop(0.85, "#DCDAD3");
+    barrelGrad.addColorStop(1, "#C2C0B8");
+  }
 
-  // Draw main white body
+  // Draw main body
   ctx.beginPath();
   ctx.rect(barrelStart, -W / 2 + 0.3, barrelLen - 2, W - 0.6);
   ctx.fillStyle = barrelGrad;
@@ -193,13 +208,13 @@ export function drawPen(ctx, pen) {
   // Rear rounded tail plug
   ctx.beginPath();
   ctx.arc(barrelEnd - 2, 0, (W - 1) / 2, -Math.PI / 2, Math.PI / 2);
-  ctx.fillStyle = "#D6D4CE";
+  ctx.fillStyle = isOceanGel ? (isP1 ? "#38BDF8" : "#FB7185") : "#D6D4CE";
   ctx.fill();
-  ctx.strokeStyle = "#B5B3AA";
+  ctx.strokeStyle = isOceanGel ? (isP1 ? "#0284C7" : "#E11D48") : "#B5B3AA";
   ctx.lineWidth = 0.6;
   ctx.stroke();
 
-  // ================= 3. AUTHENTIC REYNOLDS 045 TYPOGRAPHY IMPRINT =================
+  // ================= 3. TYPOGRAPHY IMPRINT =================
   const textVisibility = Math.cos(rollAngle - Math.PI / 2);
   if (textVisibility > 0.05) {
     ctx.save();
@@ -210,10 +225,16 @@ export function drawPen(ctx, pen) {
     ctx.textBaseline = "middle";
     ctx.letterSpacing = "0.5px";
     const textYOffset = -0.4 - Math.sin(rollAngle - Math.PI / 2) * 2.2;
-    ctx.fillText("045 REYNOLDS", barrelStart + 8, textYOffset);
-    ctx.font = "italic 3.2px sans-serif";
-    ctx.fillStyle = "#8A2A2A";
-    ctx.fillText("FINE CARBURE.", barrelStart + 43, textYOffset);
+    if (isOceanGel) {
+      ctx.fillText("OCEAN GEL 0.5", barrelStart + 8, textYOffset);
+      ctx.font = "italic 3.2px sans-serif";
+      ctx.fillText("SMOOTH FLOW.", barrelStart + 43, textYOffset);
+    } else {
+      ctx.fillText("045 REYNOLDS", barrelStart + 8, textYOffset);
+      ctx.font = "italic 3.2px sans-serif";
+      ctx.fillStyle = "#8A2A2A";
+      ctx.fillText("FINE CARBURE.", barrelStart + 43, textYOffset);
+    }
     ctx.restore();
   }
 

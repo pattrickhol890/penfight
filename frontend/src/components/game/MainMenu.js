@@ -44,7 +44,14 @@ const Diff = ({ v, cur, set }) => (
 );
 
 export default function MainMenu({ onStart, muted, onToggleMute, mp }) {
-  const { user, claimUsernameModalOpen, setClaimUsernameModalOpen } = useAuth();
+  const {
+    user,
+    claimUsernameModalOpen,
+    setClaimUsernameModalOpen,
+    penboxModalOpen,
+    setPenboxModalOpen,
+    activeLineup,
+  } = useAuth();
   const [mode, setMode] = useState("ai");
   const [difficulty, setDifficulty] = useState("medium");
   const [joinCode, setJoinCode] = useState("");
@@ -134,7 +141,41 @@ export default function MainMenu({ onStart, muted, onToggleMute, mp }) {
         <h1 style={{ fontFamily: "'Caveat', cursive", color: "#141E50" }} className="text-5xl sm:text-6xl font-bold leading-none">
           Pen Fight
         </h1>
-        <p className="mb-5 mt-1 font-mono text-xs sm:text-sm text-[#141E50cc]">Flick your pens. Knock theirs off the table.</p>
+        <p className="mb-3 mt-1 font-mono text-xs sm:text-sm text-[#141E50cc]">Flick your pens. Knock theirs off the table.</p>
+
+        {/* Penbox & Lineup Quick Bar */}
+        <button
+          type="button"
+          onClick={() => setPenboxModalOpen(true)}
+          className="mb-4 w-full flex items-center justify-between p-2.5 rounded-xl border-2 border-[#141E50] bg-white/95 hover:bg-white transition cursor-pointer shadow-sm active:scale-[0.99] text-left"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="text-2xl">📐</span>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-xs font-black text-[#141E50] uppercase tracking-wide">
+                  Desk Penbox &amp; Lineup
+                </span>
+                <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-cyan-100 text-cyan-900 border border-cyan-300">
+                  Ocean Gel Ready
+                </span>
+              </div>
+              <div className="text-[10px] text-[#475569] font-medium flex items-center gap-1 mt-0.5">
+                <span>Active 4:</span>
+                {(activeLineup || ["classic", "classic", "ocean_gel", "classic"]).map((p, i) => (
+                  <span key={i} title={p === "ocean_gel" ? "Ocean Gel" : "Classic 045"}>
+                    {p === "ocean_gel" ? "🌊" : "🖊️"}
+                  </span>
+                ))}
+                <span className="text-[#141E50] font-bold underline ml-1">Customize</span>
+              </div>
+            </div>
+          </div>
+
+          <span className="font-mono text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300">
+            Open Box ➔
+          </span>
+        </button>
 
         {/* Mode Selector */}
         <div className="mb-5 grid grid-cols-3 gap-2">

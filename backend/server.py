@@ -236,6 +236,9 @@ class UserProfile(BaseModel):
     subscription_expires_at: Optional[str] = None
     stats: UserStats = Field(default_factory=UserStats)
     preferences: UserPreferences = Field(default_factory=UserPreferences)
+    inventory: Dict[str, int] = Field(default_factory=lambda: {"classic": 4, "ocean_gel": 2})
+    active_lineup: List[str] = Field(default_factory=lambda: ["classic", "classic", "ocean_gel", "classic"])
+    ink_coins: int = 150
 
 
 class GoogleAuthPayload(BaseModel):
@@ -249,6 +252,9 @@ class ProfileUpdatePayload(BaseModel):
     gamer_tag: Optional[str] = None
     favorite_ink: Optional[str] = None
     aim_mode: Optional[str] = None
+    active_lineup: Optional[List[str]] = None
+    inventory: Optional[Dict[str, int]] = None
+    ink_coins: Optional[int] = None
 
 
 class ClaimUsernamePayload(BaseModel):
@@ -597,6 +603,13 @@ async def update_my_profile(payload: ProfileUpdatePayload, authorization: Option
         prefs["aim_mode"] = payload.aim_mode
     if payload.favorite_ink or payload.aim_mode:
         updates["preferences"] = prefs
+
+    if payload.active_lineup and len(payload.active_lineup) == 4:
+        updates["active_lineup"] = payload.active_lineup
+    if payload.inventory:
+        updates["inventory"] = payload.inventory
+    if payload.ink_coins is not None:
+        updates["ink_coins"] = payload.ink_coins
 
     if updates:
         user = await db_update_user(user["id"], updates)
