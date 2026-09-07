@@ -72,3 +72,25 @@ export const DEFAULT_INVENTORY = {
   classic: 4,
   ocean_gel: 2,
 };
+
+/**
+ * Ensures a 4-slot lineup does not exceed the count of pens owned in inventory.
+ * If a player owns 2 Ocean Gels, they can equip at most 2 Ocean Gels.
+ */
+export function sanitizeLineup(lineup, inventory) {
+  const counts = {};
+  const inv = inventory || DEFAULT_INVENTORY;
+  const raw = Array.isArray(lineup) && lineup.length === 4 ? lineup : DEFAULT_LINEUP;
+
+  return raw.map((penId) => {
+    const owned = inv[penId] !== undefined ? inv[penId] : (penId === "classic" ? 4 : 0);
+    const used = counts[penId] || 0;
+    if (used < owned) {
+      counts[penId] = used + 1;
+      return penId;
+    }
+    // Cannot equip more copies than owned: fallback to classic
+    return "classic";
+  });
+}
+

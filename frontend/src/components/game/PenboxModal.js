@@ -36,11 +36,37 @@ export default function PenboxModal({ isOpen, onClose }) {
 
   const inspectPen = PEN_CATALOG[inspectPenId] || PEN_CATALOG.classic;
 
+  // Calculate copies of inspectPenId owned vs equipped in other slots
+  const inspectOwned = inventory[inspectPenId] || 0;
+  const inspectInOtherSlots = activeLineup.filter((id, idx) => idx !== selectedSlot && id === inspectPenId).length;
+  const inspectAvailForSlot = Math.max(0, inspectOwned - inspectInOtherSlots);
+  const inspectTotalEquipped = activeLineup.filter((id) => id === inspectPenId).length;
+  const isInspectAlreadyInSlot = activeLineup[selectedSlot] === inspectPenId;
+  const canEquipInspect = inspectAvailForSlot > 0;
+
+  // Helper for any pen
+  const getPenAvailability = (penId) => {
+    const owned = inventory[penId] || 0;
+    const inOtherSlots = activeLineup.filter((id, idx) => idx !== selectedSlot && id === penId).length;
+    const availForSlot = Math.max(0, owned - inOtherSlots);
+    const totalEquipped = activeLineup.filter((id) => id === penId).length;
+    return {
+      owned,
+      availForSlot,
+      totalEquipped,
+      canEquip: availForSlot > 0,
+      isMaxEquipped: totalEquipped >= owned,
+    };
+  };
+
   const handleEquipPen = (penId) => {
+    const { canEquip } = getPenAvailability(penId);
+    if (!canEquip) return;
+
     const newLineup = [...activeLineup];
     newLineup[selectedSlot] = penId;
     updateLineup(newLineup);
-    // Auto-advance to next slot for easy multi-equipping
+    // Auto-advance to next slot
     setSelectedSlot((prev) => (prev + 1) % 4);
   };
 
@@ -213,20 +239,47 @@ export default function PenboxModal({ isOpen, onClose }) {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold text-[#141E50] bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
-                        In Locker: x{inventory[inspectPenId] || 0}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-[#141E50] bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200">
+                        Owned: x{inspectOwned} ({inspectTotalEquipped}/{inspectOwned} equipped)
                       </span>
                       <button
                         type="button"
                         onClick={() => handleEquipPen(inspectPenId)}
-                        disabled={(inventory[inspectPenId] || 0) <= 0}
-                        className="px-3.5 py-1 rounded-lg bg-[#141E50] text-white text-xs font-black uppercase tracking-wider hover:bg-[#1E293B] transition active:scale-95 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={!canEquipInspect}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition active:scale-95 shadow-sm ${
+                          canEquipInspect
+                            ? "bg-[#141E50] text-white hover:bg-[#1E293B]"
+                            : "bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed"
+                        }`}
                       >
-                        Equip to Slot {selectedSlot + 1}
+                        {isInspectAlreadyInSlot
+                          ? "Current Pen in Slot " + (selectedSlot + 1)
+                          : canEquipInspect
+                          ? `Equip to Slot ${selectedSlot + 1} (${inspectAvailForSlot} left)`
+                          : `All Equipped (${inspectTotalEquipped}/${inspectOwned})`}
                       </button>
                     </div>
                   </div>
+
+                  {/* Limit reached warning banner */}
+                  {!canEquipInspect && (
+                    <div className="mt-2.5 text-xs bg-amber-50 border border-amber-300 rounded-lg p-2 text-amber-950 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">⚠️</span>
+                        <span>
+                          You have equipped all <strong>{inspectOwned}</strong> owned copies of <strong>{inspectPen.name}</strong>. Earn more copies from Classroom Missions to equip more!
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("missions")}
+                        className="text-[10px] font-bold uppercase tracking-wider text-amber-900 underline hover:text-amber-700 whitespace-nowrap"
+                      >
+                        View Missions
+                      </button>
+                    </div>
+                  )}
 
                   {/* Stat Bars */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
@@ -313,7 +366,7 @@ export default function PenboxModal({ isOpen, onClose }) {
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                     {Object.values(PEN_CATALOG).map((pen) => {
-                      const count = inventory[pen.id] || 0;
+                      const avail = getPenAvailability(pen.id);
                       const isInspecting = inspectPenId === pen.id;
                       const isGel = pen.id === "ocean_gel";
 
@@ -333,9 +386,20 @@ export default function PenboxModal({ isOpen, onClose }) {
                               <h4 className="text-xs font-black text-[#141E50] leading-tight">
                                 {pen.name}
                               </h4>
-                              <span className="text-[10px] font-mono text-[#64748B] block mt-0.5">
-                                Owned: <strong>x{count}</strong>
-                              </span>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[10px] font-mono text-[#64748B]">
+                                  x{avail.owned}
+                                </span>
+                                <span
+                                  className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+                                    avail.isMaxEquipped
+                                      ? "text-rose-700 bg-rose-50 border-rose-200"
+                                      : "text-blue-700 bg-blue-50 border-blue-200"
+                                  }`}
+                                >
+                                  {avail.totalEquipped}/{avail.owned} {avail.isMaxEquipped ? "MAX" : "used"}
+                                </span>
+                              </div>
                             </div>
                           </div>
 
@@ -345,8 +409,17 @@ export default function PenboxModal({ isOpen, onClose }) {
                               e.stopPropagation();
                               handleEquipPen(pen.id);
                             }}
-                            className="p-1.5 rounded-lg bg-[#141E50]/10 hover:bg-[#141E50] hover:text-white text-[#141E50] transition active:scale-95"
-                            title={`Equip to Slot ${selectedSlot + 1}`}
+                            disabled={!avail.canEquip}
+                            className={`p-1.5 rounded-lg transition active:scale-95 ${
+                              avail.canEquip
+                                ? "bg-[#141E50]/10 hover:bg-[#141E50] hover:text-white text-[#141E50]"
+                                : "bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed opacity-50"
+                            }`}
+                            title={
+                              avail.canEquip
+                                ? `Equip to Slot ${selectedSlot + 1} (${avail.availForSlot} available)`
+                                : `All ${avail.owned} copies equipped in lineup`
+                            }
                           >
                             <Plus className="w-4 h-4" />
                           </button>

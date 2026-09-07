@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import axios from "axios";
-import { DEFAULT_INVENTORY, DEFAULT_LINEUP } from "../game/penCatalog";
+import { DEFAULT_INVENTORY, DEFAULT_LINEUP, sanitizeLineup } from "../game/penCatalog";
 
 const AuthContext = createContext(null);
 
@@ -32,7 +32,7 @@ const INITIAL_MISSIONS = [
     current: 0,
     rewardType: "pen",
     rewardPen: "ocean_gel",
-    rewardText: "+1 Ocean Gel Pen",
+    rewardText: "+1 Ocean Gel Pen (3rd Copy)",
     claimed: false,
   },
   {
@@ -44,6 +44,17 @@ const INITIAL_MISSIONS = [
     rewardType: "coins",
     rewardAmount: 100,
     rewardText: "+100 Ink Coins",
+    claimed: false,
+  },
+  {
+    id: "m_win_5_gel",
+    title: "Desk Overlord (Full Gel Fleet)",
+    desc: "Win 5 matches with Ocean Gel in your squad to unlock a 4th copy!",
+    target: 5,
+    current: 0,
+    rewardType: "pen",
+    rewardPen: "ocean_gel",
+    rewardText: "+1 Ocean Gel Pen (4th Copy)",
     claimed: false,
   },
 ];
@@ -80,7 +91,10 @@ export function AuthProvider({ children }) {
   const [activeLineup, setActiveLineup] = useState(() => {
     try {
       const saved = localStorage.getItem(LINEUP_KEY);
-      return saved ? JSON.parse(saved) : DEFAULT_LINEUP;
+      const parsed = saved ? JSON.parse(saved) : DEFAULT_LINEUP;
+      const invSaved = localStorage.getItem(INVENTORY_KEY);
+      const inv = invSaved ? JSON.parse(invSaved) : DEFAULT_INVENTORY;
+      return sanitizeLineup(parsed, inv);
     } catch {
       return DEFAULT_LINEUP;
     }
@@ -100,7 +114,16 @@ export function AuthProvider({ children }) {
   const [missions, setMissions] = useState(() => {
     try {
       const saved = localStorage.getItem(MISSIONS_KEY);
-      return saved ? JSON.parse(saved) : INITIAL_MISSIONS;
+      if (!saved) return INITIAL_MISSIONS;
+      const parsed = JSON.parse(saved);
+      const existingIds = new Set(parsed.map((m) => m.id));
+      const merged = [...parsed];
+      for (const initM of INITIAL_MISSIONS) {
+        if (!existingIds.has(initM.id)) {
+          merged.push(initM);
+        }
+      }
+      return merged;
     } catch {
       return INITIAL_MISSIONS;
     }
@@ -108,14 +131,15 @@ export function AuthProvider({ children }) {
 
   const [penboxModalOpen, setPenboxModalOpen] = useState(false);
 
-  // Update active 4-slot desk lineup
+  // Update active 4-slot desk lineup with strict inventory ownership limit
   const updateLineup = useCallback(
     (newLineup) => {
       if (!Array.isArray(newLineup) || newLineup.length !== 4) return;
-      setActiveLineup(newLineup);
-      localStorage.setItem(LINEUP_KEY, JSON.stringify(newLineup));
+      const sanitized = sanitizeLineup(newLineup, inventory);
+      setActiveLineup(sanitized);
+      localStorage.setItem(LINEUP_KEY, JSON.stringify(sanitized));
     },
-    []
+    [inventory]
   );
 
   // Add pen(s) to inventory
@@ -171,7 +195,7 @@ export function AuthProvider({ children }) {
         let shouldIncrement = false;
         if (key === "play_match" && m.id === "m_first_match") shouldIncrement = true;
         if (key === "win_match" && m.id === "m_win_3") shouldIncrement = true;
-        if (key === "win_with_gel" && m.id === "m_gel_win") shouldIncrement = true;
+        if (key === "win_with_gel" && (m.id === "m_gel_win" || m.id === "m_win_5_gel")) shouldIncrement = true;
 
         if (shouldIncrement) {
           changed = true;
